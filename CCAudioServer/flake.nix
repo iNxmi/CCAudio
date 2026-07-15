@@ -12,9 +12,10 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [
-          (pkgs.gradle.override { java = pkgs.jdk21; })
-          pkgs.jdk21
+        packages = with pkgs; [
+          (gradle.override { java = jdk21; })
+          jdk21
+          ffmpeg
         ];
 
         JAVA_HOME = "${pkgs.jdk21}";

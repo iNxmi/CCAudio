@@ -16,10 +16,12 @@ function parser()
     parser:flag("--print_arguments", "print debug argument info")
 
     local command_list = parser:command("list", "List music.")
+
     local command_play = parser:command("play", "Play music.")
+    command_play:argument("file", "File to play.")
+
     local command_echo = parser:command("echo", "Test the WebSocket with echo.")
     command_echo:argument("message", "Message to send the echo.")
-    --command_play:arguments("file", "The file to start playing.")
 
     return parser
 end
@@ -35,17 +37,22 @@ local parsed_arguments = parser:parse(raw_arguments)
 
 function list()
     local url = string.format("%s/list", HTTP_URL)
-    local raw_json, is_binary = http.get(url)
-    local json = textutils.unserialize(raw_json)
+    local request = http.get(url)
+    local json_text, _ = request.readAll()
+    local json = textutils.unserializeJSON(json_text)
 
     for index, file in ipairs(json) do
-        local message = string.format("%d. $s", index, file)
+        local message = string.format("%d. %s", index, file)
         print(message)
     end
 end
 
 function play()
+    local url = string.format("%s/transcode?file=%s", HTTP_URL, parsed_arguments.file)
+    local request = http.get(url)
+    local text, _ = request.readAll()
 
+    print(text)
 end
 
 function echo()

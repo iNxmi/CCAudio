@@ -7,7 +7,7 @@ group = "com.nami"
 version = "1.0.0-SNAPSHOT"
 
 application {
-    mainClass = "io.ktor.server.netty.EngineMain"
+    mainClass = "com.example.MainKt"
 }
 
 kotlin {
