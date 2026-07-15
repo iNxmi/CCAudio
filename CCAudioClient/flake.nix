@@ -1,8 +1,8 @@
 {
-  description = "CCAudioClient development shell with CraftOS-PC";
+  description = "CCAudioClient development shell";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
   };
 
   outputs = { self, nixpkgs }:
@@ -106,6 +106,8 @@
   in {
     devShells.${system}.default = pkgs.mkShell {
       shellHook = ''
+        alias craftos="craftos --mount-ro src=src"
+
         echo "================================================="
         echo " CraftOS-PC (AUR-Ported Build with Patches)"
         echo "================================================="
