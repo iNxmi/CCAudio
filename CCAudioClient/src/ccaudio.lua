@@ -1,3 +1,5 @@
+local VERSION = "1.0.0-alpha"
+
 function parser()
     local argparse = require "argparse__0_7_2"
 
@@ -31,30 +33,25 @@ function parser()
     return parser
 end
 
-local ADDRESS = "127.0.0.1:8080"
-local HTTP_URL = "http://" .. ADDRESS
-local WEBSOCKET_URL = "ws://" .. ADDRESS
-
 local raw_arguments = { ... }
 
 local parser = parser()
-local parsed_arguments = parser:parse(raw_arguments)
+local arguments = parser:parse(raw_arguments)
 
-local address = string.format("%s:%d", parsed_arguments.address, parsed_arguments.port)
+local address = string.format("%s:%d", arguments.address, arguments.port)
 local http_url = string.format("http://%s", address)
 local websocket_url = string.format("ws://%s", address)
 
-function list()
+function get_list()
     local url = string.format("%s/list", http_url)
-    local request, err = http.get(url)
-    if not request then
-        error("HTTP request failed: " .. tostring(err))
-        return
-    end
+    local request = http.get(url)
     local json_text, _ = request.readAll()
-    local json = textutils.unserializeJSON(json_text)
+    return textutils.unserializeJSON(json_text)
+end
 
-    for index, file in ipairs(json) do
+function list()
+    local list = get_list()
+    for index, file in ipairs(list) do
         local message = string.format("%d. %s", index, file)
         print(message)
     end
@@ -67,7 +64,7 @@ function play()
         error("No speaker found.")
     end
 
-    local initialUrl = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, parsed_arguments.file, parsed_arguments.chunk_size)
+    local initialUrl = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, arguments.file, arguments.chunk_size)
     local request, err = http.get(initialUrl)
     if not request then
         error("HTTP request failed: " .. tostring(err))
@@ -77,9 +74,16 @@ function play()
     local json_text, _ = request.readAll()
     local json = textutils.unserializeJSON(json_text)
 
+
     local chunk_size = json.chunk_size_in_bytes
     local chunk_count = json.number_of_chunks
     local hash = json.hash
+
+    for index = 0, json.number_of_chunks - 1 do
+        local url_stream = string.format("%s/stream?hash=%s&chunk=%d", http_url,json.hash, index)
+        local request_stream = http.get(url_stream)
+        local chunk_json_text, _ = request_stream.readAll()
+    end
 
     local bufferedChunks = 0
     local MAX_CHUNKS = math.floor(1000000 / chunk_size)
@@ -89,7 +93,7 @@ function play()
     for i = 0, chunk_count - 1, 1 do
 
         while ((bufferedChunks <= MAX_CHUNKS) and not (nextDownloadIndex >= chunk_count)) do
-            local url = string.format("%s/stream?hash=%s&chunk=%d",HTTP_URL, hash, nextDownloadIndex)
+            local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, nextDownloadIndex)
             local res, _ = http.get(url, {}, true)
 
             local jsonChunkText = res.readAll()
@@ -131,7 +135,7 @@ function echo()
     local url = string.format("%s/echo", websocket_url)
     local socket = assert(http.websocket(url))
 
-    socket.send(parsed_arguments.message)
+    socket.send(arguments.message)
     local response, is_binary = socket.receive()
     socket.close()
 
@@ -139,27 +143,23 @@ function echo()
 end
 
 function get_command()
-    if parsed_arguments.list then
+    if arguments.list then
         return list
-    elseif parsed_arguments.play then
+    elseif arguments.play then
         return play
-    elseif parsed_arguments.echo then
+    elseif arguments.echo then
         return echo
     end
 end
 
 function execute()
-    if parsed_arguments.version then
+    if arguments.version then
         print(VERSION)
     end
 
-    if parsed_arguments.print_arguments then
+    if arguments.print_arguments then
         print(textutils.serialize(raw_arguments))
-        print(textutils.serialize(parsed_arguments))
-    end
-
-    if parsed_arguments.address then
-        print(textutils.serialize(raw_arguments))
+        print(textutils.serialize(arguments))
     end
 
     local command = get_command()
