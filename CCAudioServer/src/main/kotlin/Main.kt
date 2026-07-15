@@ -5,20 +5,21 @@ import io.ktor.serialization.jackson.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
-import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.server.request.httpMethod
-import io.ktor.server.request.path
-import io.ktor.server.request.uri
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import org.slf4j.event.Level
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createTempFile
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.exists
 import kotlin.io.path.readBytes
 
 val PATH_MUSIC = Paths.get("music")
@@ -53,10 +54,11 @@ const val CHUNK_SIZE_IN_BYTES = 128 * 1024
 
 data class Stream(
     val chunkSizeInBytes: Int,
-    val chunks: List<ByteArray>
+    val chunks: List<ByteArray>,
+    val totalBytes: Int,
 )
 
-fun getKeyHash(file:String, chunkSizeInBytes: Int): String {
+fun getKeyHash(file: String, chunkSizeInBytes: Int): String {
     val digest = MessageDigest.getInstance("SHA-256")
 
     val a = digest.digest(file.toByteArray(Charsets.UTF_8))
@@ -67,6 +69,47 @@ fun getKeyHash(file:String, chunkSizeInBytes: Int): String {
 }
 
 val cache = mutableMapOf<String, Stream>()
+
+fun deleteFile(path: Path): Boolean {
+    val success = path.deleteIfExists()
+
+    if (!success)
+        System.err.println("Warning: Failed to delete '$path'.")
+
+    return success
+}
+
+fun transcode(path: Path): List<Byte>? {
+    val output = createTempFile(prefix = "cc_audio_server", suffix = ".pcm")
+
+    val command = listOf(
+        "ffmpeg",
+        "-y",
+        "-i", path.absolutePathString(),
+        "-map", "0:a:0",
+        "-ac", "1",
+        "-f", "s8",
+        "-c:a", "pcm_s8",
+        "-ar", "48000",
+        output.absolutePathString()
+    )
+
+    val process = ProcessBuilder(command)
+        .redirectErrorStream(true)
+        .start()
+
+    val exitCode = process.waitFor()
+
+    if (exitCode != 0) {
+        deleteFile(output)
+        return null
+    }
+
+    val result = output.readBytes().toList()
+    deleteFile(output)
+
+    return result
+}
 
 fun Route.httpRoutes() {
     get("/list") {
@@ -85,40 +128,21 @@ fun Route.httpRoutes() {
         val chunkSizeInBytes = call.request.queryParameters["chunkSizeInBytes"]?.toIntOrNull() ?: CHUNK_SIZE_IN_BYTES
 
         val hash = getKeyHash(fileName, chunkSizeInBytes)
-
         if (!cache.containsKey(hash)) {
-
-
-            val outputFile = createTempFile(prefix = "cc_audio_server", suffix = ".pcm")
-
             val path = PATH_MUSIC.resolve(fileName)
+            if(!path.exists()) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
 
-            val command = listOf(
-                "ffmpeg",
-                "-y",
-                "-i", path.absolutePathString(),
-                "-map", "0:a:0",
-                "-ac", "1",
-                "-f", "s8",
-                "-c:a", "pcm_s8",
-                "-ar", "48000",
-                outputFile.absolutePathString()
-            )
-
-            val process = ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .start()
-
-            val exitCode = process.waitFor()
-            if (exitCode != 0) {
+            val bytes = transcode(path)
+            if(bytes == null) {
                 call.respond(HttpStatusCode.InternalServerError)
                 return@get
             }
 
-            val bytes = outputFile.readBytes().toList()
             val chunks = bytes.chunked(chunkSizeInBytes).map { it.toByteArray() }
-
-            val stream = Stream(chunkSizeInBytes, chunks)
+            val stream = Stream(chunkSizeInBytes, chunks, bytes.size)
             cache[hash] = stream
         }
 
@@ -126,7 +150,8 @@ fun Route.httpRoutes() {
         val response = mapOf(
             "hash" to hash,
             "chunk_size_in_bytes" to stream.chunkSizeInBytes,
-            "number_of_chunks" to stream.chunks.size
+            "number_of_chunks" to stream.chunks.size,
+            "number_of_bytes" to stream.totalBytes,
         )
 
         call.respond(response)
@@ -152,8 +177,9 @@ fun Route.httpRoutes() {
 
         val stream = cache[hash]!!
         val chunk = stream.chunks[chunkIndex]
-        val string = chunk.toString(Charsets.UTF_8)
-        call.respond(string)
+//        val string = chunk.toString(Charsets.UTF_8)
+
+        call.respond(chunk.toList())
     }
 }
 
