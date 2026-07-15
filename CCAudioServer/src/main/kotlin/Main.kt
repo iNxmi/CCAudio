@@ -111,18 +111,27 @@ fun transcode(path: Path): List<Byte>? {
     return result
 }
 
+fun getFiles(path: Path) = path.toFile().listFiles().map { it.name }.sorted()
+
 fun Route.httpRoutes() {
     get("/list") {
-        val file = PATH_MUSIC.toFile()
-        val set = file.listFiles().map { it.name }.toSortedSet()
-        call.respond(set)
+        val files = getFiles(PATH_MUSIC)
+        call.respond(files)
     }
 
     get("/request") {
-        val fileName = call.request.queryParameters["file"]
-        if (fileName == null) {
+        val identifier = call.request.queryParameters["file"]
+        if (identifier == null) {
             call.respond(HttpStatusCode.BadRequest)
             return@get
+        }
+
+        val id = identifier.toIntOrNull()
+        val fileName = if(id != null) {
+            val files = getFiles(PATH_MUSIC)
+            files[id]
+        } else {
+            identifier
         }
 
         val chunkSizeInBytes = call.request.queryParameters["chunkSizeInBytes"]?.toIntOrNull() ?: CHUNK_SIZE_IN_BYTES

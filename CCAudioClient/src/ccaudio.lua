@@ -52,7 +52,7 @@ end
 function list()
     local list = get_list()
     for index, file in ipairs(list) do
-        local message = string.format("%d. %s", index, file)
+        local message = string.format("%d. %s", index - 1, file)
         print(message)
     end
 end
@@ -74,16 +74,9 @@ function play()
     local json_text, _ = request.readAll()
     local json = textutils.unserializeJSON(json_text)
 
-
     local chunk_size = json.chunk_size_in_bytes
     local chunk_count = json.number_of_chunks
     local hash = json.hash
-
-    for index = 0, json.number_of_chunks - 1 do
-        local url_stream = string.format("%s/stream?hash=%s&chunk=%d", http_url,json.hash, index)
-        local request_stream = http.get(url_stream)
-        local chunk_json_text, _ = request_stream.readAll()
-    end
 
     local bufferedChunks = 0
     local MAX_CHUNKS = math.floor(1000000 / chunk_size)
