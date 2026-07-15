@@ -17,6 +17,8 @@
             ];
 
             shellHook = ''
+              alias craftos="craftos --mount-ro src=src"
+
               echo "========================================================="
               echo " CC:Tweaked Dev Shell Active "
               echo " Write your Lua scripts inside the './src' directory."

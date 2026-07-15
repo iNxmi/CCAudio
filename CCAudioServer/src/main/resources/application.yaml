@@ -3,4 +3,4 @@ ktor:
     port: 8080
   application:
     modules:
-      - com.example.RoutingKt.configureRouting
+      - com.example.RoutingKt.module
