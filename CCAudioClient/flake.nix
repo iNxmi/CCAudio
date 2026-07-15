@@ -12,7 +12,7 @@
 
     craftos-pc-orig = pkgs.craftos-pc;
 
-    craftos-pc-aur = pkgs.stdenv.mkDerivation rec {
+    craftos-pc-custom = pkgs.stdenv.mkDerivation rec {
       pname = "craftos-pc";
       version = "2.8.3";
 
@@ -105,6 +105,10 @@
 
   in {
     devShells.${system}.default = pkgs.mkShell {
+      packages = [
+        craftos-pc-custom
+      ];
+
       shellHook = ''
         alias craftos="craftos --mount-ro src=src"
 
