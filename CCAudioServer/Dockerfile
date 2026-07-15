@@ -20,4 +20,4 @@ WORKDIR /app
 # (Adjust source path depending on your Ktor build plugin output, e.g., fat JAR or installDist)
 COPY --from=build /home/gradle/src/build/libs/*-all.jar /app/server.jar
 
-CMD ["java", "-jar", "/app/server.jar", "-config=application.docker.yml"]
+CMD ["java", "-jar", "/app/server.jar", "-config=application.docker.yaml"]
