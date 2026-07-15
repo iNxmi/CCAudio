@@ -6,7 +6,7 @@ function parser()
     local parser = argparse("script", "Example Description.")
 
     function parser:error(message)
-        error(message,0)
+        error(message, 0)
     end
 
     local parser_help = parser.help
@@ -52,7 +52,7 @@ end
 function list()
     local list = get_list()
     for index, file in ipairs(list) do
-        local message = string.format("%d. %s", index - 1, file)
+        local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
         print(message)
     end
 end

@@ -5,6 +5,7 @@ import io.ktor.serialization.jackson.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -33,7 +34,8 @@ fun Application.module() {
             val status = call.response.status()
             val httpMethod = call.request.httpMethod.value
             val path = call.request.uri
-            "[$status] $httpMethod $path"
+            val origin = call.request.origin.remoteAddress
+            "$origin [$status] $httpMethod $path"
         }
     }
     install(ContentNegotiation) {
