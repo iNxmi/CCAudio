@@ -53,7 +53,14 @@ function list()
     local list = get_list()
     for index, file in ipairs(list) do
         local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
-        print(message)
+
+        if index % 2 == 0 then
+            term.setTextColour(colours.red)
+            else
+            term.setTextColour(colours.green)
+        end
+
+        textutils.pagedPrint(message)
     end
 end
 

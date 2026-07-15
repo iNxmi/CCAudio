@@ -3,9 +3,9 @@ package com.nami
 import io.ktor.http.*
 import io.ktor.serialization.jackson.*
 import io.ktor.server.application.*
+import io.ktor.server.plugins.*
 import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.server.plugins.origin
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -13,12 +13,7 @@ import org.slf4j.event.Level
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
-import kotlin.io.path.absolutePathString
-import kotlin.io.path.createDirectories
-import kotlin.io.path.createTempFile
-import kotlin.io.path.deleteIfExists
-import kotlin.io.path.exists
-import kotlin.io.path.readBytes
+import kotlin.io.path.*
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
@@ -53,10 +48,10 @@ data class Stream(
     val totalBytes: Int,
 )
 
-fun getKeyHash(file: String, chunkSizeInBytes: Int): String {
+fun getKeyHash(path: Path, chunkSizeInBytes: Int): String {
     val digest = MessageDigest.getInstance("SHA-256")
 
-    val a = digest.digest(file.toByteArray(Charsets.UTF_8))
+    val a = digest.digest(path.readBytes())
     val b = digest.digest(chunkSizeInBytes.toString().toByteArray(Charsets.UTF_8))
     val bytes = digest.digest(a + b)
 
@@ -74,7 +69,7 @@ fun deleteFile(path: Path): Boolean {
     return success
 }
 
-fun command(input: Path, output: Path)= listOf(
+fun command(input: Path, output: Path) = listOf(
     "ffmpeg",
     "-y",
     "-i", input.absolutePathString(),
@@ -89,7 +84,7 @@ fun command(input: Path, output: Path)= listOf(
 fun transcode(path: Path): List<Byte>? {
     val output = createTempFile(prefix = "cc_audio_server", suffix = ".pcm")
 
-    val command = command(input = path, output =  output)
+    val command = command(input = path, output = output)
 
     val process = ProcessBuilder(command)
         .redirectErrorStream(true)
@@ -108,28 +103,33 @@ fun transcode(path: Path): List<Byte>? {
     return result
 }
 
-fun getFiles(path: Path) = path.toFile().listFiles().map { it.name }.sorted()
+data class Music(
+    val path: Path,
+    val name: String
+)
+
+fun getMusic(path: Path) = path.walk()
+    .filter { it.isRegularFile() }
+    .map { Music(it, it.toString().replace(path.toString(), "")) }
+    .toList()
+    .sortedWith (compareBy (String.CASE_INSENSITIVE_ORDER) { it.path.toString() })
 
 fun Route.httpRoutes(musicPath: Path) {
     get("/list") {
-        val files = getFiles(musicPath)
-        call.respond(files)
+        val music = getMusic(musicPath).map { it.name }
+        call.respond(music)
     }
 
     get("/request") {
-        val identifier = call.request.queryParameters["file"]
-        if (identifier == null) {
+        //TODO rename to 'index'
+        val id = call.request.queryParameters["file"]?.toIntOrNull()
+        if (id == null) {
             call.respond(HttpStatusCode.BadRequest)
             return@get
         }
 
-        val id = identifier.toIntOrNull()
-        val fileName = if(id != null) {
-            val files = getFiles(musicPath)
-            files[id]
-        } else {
-            identifier
-        }
+        val music = getMusic(musicPath)
+        val selected = music[id]
 
         val chunkSizeInBytes = call.request.queryParameters["chunkSizeInBytes"]?.toIntOrNull()
         if (chunkSizeInBytes == null) {
@@ -137,16 +137,10 @@ fun Route.httpRoutes(musicPath: Path) {
             return@get
         }
 
-        val hash = getKeyHash(fileName, chunkSizeInBytes)
+        val hash = getKeyHash(selected.path, chunkSizeInBytes)
         if (!cache.containsKey(hash)) {
-            val path = musicPath.resolve(fileName)
-            if(!path.exists()) {
-                call.respond(HttpStatusCode.NotFound)
-                return@get
-            }
-
-            val bytes = transcode(path)
-            if(bytes == null) {
+            val bytes = transcode(selected.path)
+            if (bytes == null) {
                 call.respond(HttpStatusCode.InternalServerError)
                 return@get
             }
