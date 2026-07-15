@@ -1,3 +1,5 @@
+local VERSION = "1.0.0-alpha"
+
 function parser()
     local argparse = require "argparse__0_7_2"
 
@@ -14,11 +16,16 @@ function parser()
     end
 
     parser:flag("--print_arguments", "print debug argument info")
+    parser:flag("--version", "print version")
+
+    parser:option("-a --address", "set server address", "127.0.0.1")
+    parser:option("-p --port", "set server port", "8080")
 
     local command_list = parser:command("list", "List music.")
 
     local command_play = parser:command("play", "Play music.")
     command_play:argument("file", "File to play.")
+    command_play:option("-c --chunk_size", "Chunk size (in bytes)", 128 * 1024)
 
     local command_echo = parser:command("echo", "Test the WebSocket with echo.")
     command_echo:argument("message", "Message to send the echo.")
@@ -26,17 +33,17 @@ function parser()
     return parser
 end
 
-local ADDRESS = "127.0.0.1:8080"
-local HTTP_URL = "http://" .. ADDRESS
-local WEBSOCKET_URL = "ws://" .. ADDRESS
-
 local raw_arguments = { ... }
 
 local parser = parser()
 local parsed_arguments = parser:parse(raw_arguments)
 
+local address = string.format("%s:%d", parsed_arguments.address, parsed_arguments.port)
+local http_url = string.format("http://%s", address)
+local websocket_url = string.format("ws://%s", address)
+
 function list()
-    local url = string.format("%s/list", HTTP_URL)
+    local url = string.format("%s/list", http_url)
     local request = http.get(url)
     local json_text, _ = request.readAll()
     local json = textutils.unserializeJSON(json_text)
@@ -48,15 +55,22 @@ function list()
 end
 
 function play()
-    local url = string.format("%s/transcode?file=%s", HTTP_URL, parsed_arguments.file)
+    local url = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, parsed_arguments.file, parsed_arguments.chunk_size)
     local request = http.get(url)
-    local text, _ = request.readAll()
+    local json_text, _ = request.readAll()
+    local json = textutils.unserializeJSON(json_text)
 
-    print(text)
+    for index = 0, json.number_of_chunks - 1 do
+        local url_stream = string.format("%s/stream?hash=%s&chunk=%d", http_url,json.hash, index)
+        local request_stream = http.get(url_stream)
+        local chunk, _ = request_stream.readAll()
+    end
+
+    print("done")
 end
 
 function echo()
-    local url = string.format("%s/echo", WEBSOCKET_URL)
+    local url = string.format("%s/echo", websocket_url)
     local socket = assert(http.websocket(url))
 
     socket.send(parsed_arguments.message)
@@ -76,11 +90,22 @@ function get_command()
     end
 end
 
-local command = get_command()
+function execute()
+    if parsed_arguments.version then
+        print(VERSION)
+    end
 
-if parsed_arguments.print_arguments then
-    print(textutils.serialize(raw_arguments))
-    print(textutils.serialize(parsed_arguments))
+    if parsed_arguments.print_arguments then
+        print(textutils.serialize(raw_arguments))
+        print(textutils.serialize(parsed_arguments))
+    end
+
+    if parsed_arguments.address then
+        print(textutils.serialize(raw_arguments))
+    end
+
+    local command = get_command()
+    return command()
 end
 
-local result = command()
+local result = execute()
