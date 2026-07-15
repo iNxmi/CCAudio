@@ -110,7 +110,7 @@
       ];
 
       shellHook = ''
-        alias craftos="craftos --mount-ro src=src --exec \"periphemu.create('top', 'speaker'); config.set('standardsMode', true)\""
+        alias craftos="craftos --mount-rw src=src --exec \"periphemu.create('top', 'speaker'); config.set('standardsMode', true)\""
 
         echo "================================================="
         echo " CraftOS-PC (AUR-Ported Build with Patches)"

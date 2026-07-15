@@ -1,5 +1,3 @@
-local VERSION = "1.0.0-alpha"
-
 function parser()
     local argparse = require "argparse__0_7_2"
 
@@ -33,6 +31,10 @@ function parser()
     return parser
 end
 
+local ADDRESS = "127.0.0.1:8080"
+local HTTP_URL = "http://" .. ADDRESS
+local WEBSOCKET_URL = "ws://" .. ADDRESS
+
 local raw_arguments = { ... }
 
 local parser = parser()
@@ -44,7 +46,11 @@ local websocket_url = string.format("ws://%s", address)
 
 function list()
     local url = string.format("%s/list", http_url)
-    local request = http.get(url)
+    local request, err = http.get(url)
+    if not request then
+        error("HTTP request failed: " .. tostring(err))
+        return
+    end
     local json_text, _ = request.readAll()
     local json = textutils.unserializeJSON(json_text)
 
@@ -55,18 +61,70 @@ function list()
 end
 
 function play()
-    local url = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, parsed_arguments.file, parsed_arguments.chunk_size)
-    local request = http.get(url)
+    local speaker = peripheral.find("speaker")
+
+    if not speaker then
+        error("No speaker found.")
+    end
+
+    local initialUrl = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, parsed_arguments.file, parsed_arguments.chunk_size)
+    local request, err = http.get(initialUrl)
+    if not request then
+        error("HTTP request failed: " .. tostring(err))
+        return
+    end
+
     local json_text, _ = request.readAll()
     local json = textutils.unserializeJSON(json_text)
 
-    for index = 0, json.number_of_chunks - 1 do
-        local url_stream = string.format("%s/stream?hash=%s&chunk=%d", http_url,json.hash, index)
-        local request_stream = http.get(url_stream)
-        local chunk, _ = request_stream.readAll()
-    end
+    local chunk_size = json.chunk_size_in_bytes
+    local chunk_count = json.number_of_chunks
+    local hash = json.hash
 
-    print("done")
+    local bufferedChunks = 0
+    local MAX_CHUNKS = math.floor(1000000 / chunk_size)
+    local dataBuffer = {}
+    local nextDownloadIndex = 0
+
+    for i = 0, chunk_count - 1, 1 do
+
+        while ((bufferedChunks <= MAX_CHUNKS) and not (nextDownloadIndex >= chunk_count)) do
+            local url = string.format("%s/stream?hash=%s&chunk=%d",HTTP_URL, hash, nextDownloadIndex)
+            local res, _ = http.get(url, {}, true)
+
+            local jsonChunkText = res.readAll()
+            local currentChunk = textutils.unserializeJSON(jsonChunkText)
+
+            nextDownloadIndex = nextDownloadIndex + 1
+            table.insert(dataBuffer, currentChunk)
+            bufferedChunks = bufferedChunks + 1
+            res.close()
+
+        end
+
+        -- play the audio
+        local tmpBuffer = table.remove(dataBuffer, 1)
+        bufferedChunks = bufferedChunks - 1
+
+        if tmpBuffer then
+            local audioBuffer = {}
+
+            local chunkSizeLimit = 128 * 1024
+            for startIdx = 1, #tmpBuffer, chunkSizeLimit do
+                local audioBuffer = {}
+
+                for j = startIdx, math.min(startIdx + chunkSizeLimit - 1, #tmpBuffer) do
+                    table.insert(audioBuffer, tmpBuffer[j])
+                end
+
+                if #audioBuffer > 0 then
+                    while not speaker.playAudio(audioBuffer) do
+                        os.pullEvent("speaker_audio_empty")
+                    end
+                end
+            end
+        end
+    end
 end
 
 function echo()
