@@ -1,6 +1,10 @@
 ktor:
+  development: true
   deployment:
     port: 8080
   application:
     modules:
-      - com.example.RoutingKt.module
+      - com.nami.ApplicationKt.module
+
+ccaudioserver:
+  path: "music"

@@ -7,7 +7,7 @@ group = "com.nami"
 version = "1.0.0-SNAPSHOT"
 
 application {
-    mainClass = "com.example.MainKt"
+    mainClass = "com.nami.ApplicationKt"
 }
 
 kotlin {

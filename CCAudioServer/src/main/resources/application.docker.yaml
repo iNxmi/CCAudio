@@ -1,0 +1,10 @@
+ktor:
+  development: false
+  deployment:
+    port: 8080
+  application:
+    modules:
+      - com.nami.ApplicationKt.module
+
+ccaudioserver:
+  path: "/music"
