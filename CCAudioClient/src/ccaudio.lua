@@ -39,11 +39,10 @@ local parser = parser()
 local arguments = parser:parse(raw_arguments)
 
 local address = string.format("%s:%d", arguments.address, arguments.port)
-local http_url = string.format("http://%s", address)
-local websocket_url = string.format("ws://%s", address)
+local http_url_default = string.format("http://%s", address)
 
 function get_list()
-    local url = string.format("%s/list", http_url)
+    local url = string.format("%s/list", http_url_default)
     local request = http.get(url)
     local json_text, _ = request.readAll()
     return textutils.unserializeJSON(json_text)
@@ -64,25 +63,39 @@ function list()
     end
 end
 
-function play()
-    local speaker = peripheral.find("speaker")
-
-    if not speaker then
-        error("No speaker found.")
-    end
-
-    local initialUrl = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, arguments.file, arguments.chunk_size)
-    local request, err = http.get(initialUrl)
-    if not request then
+function fetch(url)
+    local response, err = http.get(url)
+    if not response then
         error("HTTP request failed: " .. tostring(err))
         return
     end
 
-    local json_text, _ = request.readAll()
+    local json_text, _ = response.readAll()
     local json = textutils.unserializeJSON(json_text)
 
-    local chunk_size = json.chunk_size_in_bytes
+    return json
+end
 
+function request(http_url, index, chunk_size)
+    local url = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, index, chunk_size)
+    return fetch(url)
+end
+
+function stream(http_url, hash, index)
+    local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, index)
+    return fetch(url)
+end
+
+function play()
+    local speaker = peripheral.find("speaker")
+    if not speaker then
+        error("No speaker found.")
+        return
+    end
+
+    local json = request(http_url_default, arguments.file, arguments.chunk_size)
+
+    local chunk_size = json.chunk_size_in_bytes
     local chunk_count = json.number_of_chunks
     local hash = json.hash
 
@@ -95,11 +108,6 @@ function play()
     local paused = false
 
     local time = 0
-
-    local monitor = peripheral.wrap("right")
-    monitor.setTextScale(0.5)
-    term.redirect(monitor)
-    term.clear()
 
     local speakerBuffer = {}
 
@@ -137,23 +145,24 @@ function play()
 
     local function inputThread()
         while running do
-            local event, key = os.pullEvent("key")
+            local _, key = os.pullEvent("key")
 
             if key == keys.q then
                 running = false
-                -- speaker.stop()
+                speaker.stop()
                 break
             elseif key == keys.p then
                 paused = not paused
                 if paused then
                     print(" paused")
                     os.queueEvent("paused")
-                    -- speaker.stop()
+                    speaker.stop()
                 else
                     os.queueEvent("resume")
                     print(" Unpaused")
                 end
             end
+
             sleep(0.05)
         end
     end
@@ -162,15 +171,10 @@ function play()
         while running do
             if nextDownloadIndex < chunk_count then
                 if #sampleBuffer < AVAILABLE_MEMORY then
-                    local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, nextDownloadIndex)
-                    local res, err = http.get(url, {}, true)
-
-                    if res then
-                        local jsonChunkText = res.readAll()
-                        local currentChunk = textutils.unserializeJSON(jsonChunkText)
+                    local currentChunk = stream(http_url_default, hash, nextDownloadIndex)
+                    if currentChunk then
                         table.move(currentChunk, 1, #currentChunk, #sampleBuffer + 1, sampleBuffer) -- appends the current to sampleBuffer
                         nextDownloadIndex = nextDownloadIndex + 1
-                        res.close()
                     else
                         print("[ERROR] Could not fetch new data. " .. err)
                         sleep(0.5)
@@ -212,10 +216,11 @@ function play()
                 local success = false
                 while not success do
                     print("while")
+                    print(time)
                     success = speaker.playAudio(audioBuffer)
                     if success then
                         beginPlayTime = time
-                        --able.move(audioBuffer, 1, #audioBuffer, #speakerBuffer + 1, speakerBuffer) -- appends audioBuffer to speakerBuffer
+                        --table.move(audioBuffer, 1, #audioBuffer, #speakerBuffer + 1, speakerBuffer) -- appends audioBuffer to speakerBuffer
                     else
                         local function bufferEmptyInterrupt()
                             os.pullEvent("speaker_audio_empty")
