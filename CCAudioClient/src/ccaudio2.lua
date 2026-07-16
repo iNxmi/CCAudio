@@ -114,10 +114,12 @@ function play()
     local time_delta = 0
     local time_audio = 0
 
+    local chunks = {}
+
     function input()
         os.startTimer(0)
         local event = {os.pullEvent()}
-        if not (event[1] == "key") then
+        if event[1] ~= "key" then
             return
         end
 
@@ -157,20 +159,37 @@ function play()
             return
         end
 
+        if chunks[download_index] ~= nil then
+            return
+        end
+
         local chunk = fetch_stream(http_url_default, json.hash, download_index)
         if not chunk then
             return
         end
 
-        table.move(chunk, 1, #chunk, #sampleBuffer + 1, sampleBuffer)
+        chunks[download_index] = chunk
         download_index = download_index + 1
     end
 
-    -- starting from index 1
-    -- index_start is inclusive
-    -- index_end is inclusive
-    function get_samples(index_start, index_end)
+    -- index_global_samples_start   starting from 1
+    -- index_global_samples_start   is inclusive
+    -- index_global_samples_end     is inclusive
+    function get_samples(index_global_samples_start, index_global_samples_end)
+        local samples = {}
 
+        local index_chunk_start = math.floor(index_global_samples_start / SAMPLES_PER_SECOND)
+        local index_chunk_end = math.ceil(index_global_samples_end / SAMPLES_PER_SECOND)
+
+        for index = index_chunk_start, index_chunk_end do
+            local chunk = chunks[index]
+            table.move(chunk, 1, #chunk, 1, samples)
+        end
+
+        local index_global_samples_length = index_global_samples_end - index_global_samples_start
+        local index_normalized_samples_start = index_global_samples_start % SAMPLES_PER_SECOND
+        local index_normalized_samples_end = index_normalized_samples_start + index_global_samples_length
+        return unpack(samples, index_normalized_samples_start, index_normalized_samples_end)
     end
 
     function audio()
