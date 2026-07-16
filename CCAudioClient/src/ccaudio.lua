@@ -73,7 +73,7 @@ function list()
 
         if index % 2 == 0 then
             term.setTextColour(colours.red)
-            else
+        else
             term.setTextColour(colours.green)
         end
 
@@ -96,36 +96,12 @@ function play()
     local hash = json.hash
 
     local sampleBuffer = {}
-    local nextDownloadIndex = 0
     local finishedDownload = false
 
     local running = true
     local paused = false
 
-    --local function timerThread()
-    --    local timerID = os.startTimer(0.1)
-    --
-    --    while running do
-    --        local event, param = os.pullEvent()
-    --
-    --        if event == "timer" and param == timerID then
-    --            if not paused then
-    --                time = time + 1
-    --                local total_seconds = time / 10
-    --                local x, y = term.getCursorPos()
-    --                --term.setCursorPos(1, 50)
-    --                --term.clearLine()
-    --                --write(string.format("time: %.1fs", total_seconds))
-    --                --term.setCursorPos(x, y)
-    --            end
-    --            timerID = os.startTimer(0.1)
-    --        elseif event == "resume" then
-    --            timerID = os.startTimer(0.1)
-    --        end
-    --    end
-    --end
-
-    local function inputThread()
+    local function thread_input()
         while running do
             local _, key = os.pullEvent("key")
 
@@ -133,15 +109,12 @@ function play()
                 running = false
                 speaker.stop()
                 break
-            elseif key == keys.p then
+            elseif key == keys.p or key == keys.space then
                 paused = not paused
                 if paused then
-                    print(" paused")
-                    os.queueEvent("paused")
-                    speaker.stop()
+                    print(" pause queued")
                 else
-                    os.queueEvent("resume")
-                    print(" unpaused")
+                    print(" unpause queued")
                 end
             end
 
@@ -149,14 +122,15 @@ function play()
         end
     end
 
-    local function downloadThread()
+    local function thread_download()
+        local index = 0
         while running do
-            if nextDownloadIndex < chunk_count then
+            if index < chunk_count then
                 if #sampleBuffer < AVAILABLE_MEMORY then
-                    local currentChunk = fetch_stream(http_url_default, hash, nextDownloadIndex)
+                    local currentChunk = fetch_stream(http_url_default, hash, index)
                     if currentChunk then
                         table.move(currentChunk, 1, #currentChunk, #sampleBuffer + 1, sampleBuffer) -- appends the current to sampleBuffer
-                        nextDownloadIndex = nextDownloadIndex + 1
+                        index = index + 1
                     else
                         sleep(0.5)
                     end
@@ -173,57 +147,53 @@ function play()
         end
     end
 
-    local function audioThread()
+    local function thread_audio()
         while running do
-            -- determine if song is finished
+
             if #sampleBuffer == 0 and finishedDownload then
                 running = false
                 break
             end
 
             if #sampleBuffer > 0 then
-                -- fill audioBuffer with values
                 local audioBuffer = {}
                 local endIDx = math.min(#sampleBuffer, SPEAKER_BUFFER_SIZE)
                 table.move(sampleBuffer, 1, endIDx, 1, audioBuffer)
 
-                -- sending the buffer to the speaker
-                ::beginPlay::
-                local beginPlayTime = 0
                 local success = false
                 while not success do
                     success = speaker.playAudio(audioBuffer)
-                    if success then
-                        beginPlayTime = time
-                        --table.move(audioBuffer, 1, #audioBuffer, #speakerBuffer + 1, speakerBuffer) -- appends audioBuffer to speakerBuffer
-                    else
-                        local function bufferEmptyInterrupt()
-                            os.pullEvent("speaker_audio_empty")
-                        end
-                        local function pauseInterrupt()
-                            os.pullEvent("paused")
-                        end
-                        local function resumeInterrupt()
-                            os.pullEvent("resume")
-                        end
+                    if not success then
+                        sleep(0.05)
+                        goto continue
+                    end
 
-                        parallel.waitForAny(bufferEmptyInterrupt, pauseInterrupt)
+                    local sum = 0
+                    for index, value in ipairs(audioBuffer) do
+                        sum = sum + value
+                    end
+                    print(sum)
 
-                        if paused then
-                            speaker.stop()
-                            os.pullEvent("resume")
-                            print("resume")
-
-                            -- removed the played samples from audioBuffer
-                            --local temp = {}
-                            --table.move(audioBuffer, playedSamples + 1, #audioBuffer, 1, temp)
-                            --audioBuffer = temp
-                            goto beginPlay
+                    local function bufferEmptyInterrupt() os.pullEvent("speaker_audio_empty") end
+                    local function pauseInterrupt()
+                        while not paused do
+                            sleep(0.05)
                         end
                     end
+                    parallel.waitForAny(bufferEmptyInterrupt, pauseInterrupt)
+
+                    if paused then
+                        speaker.stop()
+                        while paused do
+                            sleep(0.05)
+                        end
+                        success = false
+                        print(" unpaused")
+                    end
+
+                    ::continue::
                 end
 
-                -- remove what we put in audioBuffer from sampleBuffer
                 if (endIDx == #sampleBuffer) then
                     sampleBuffer = {}
                 else
@@ -237,7 +207,7 @@ function play()
         end
     end
 
-    parallel.waitForAny(audioThread, inputThread, downloadThread)
+    parallel.waitForAny(thread_audio, thread_input, thread_download)
 end
 
 function get_command()
