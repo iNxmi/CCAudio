@@ -243,25 +243,32 @@ local function command_play()
     end
 
     local function get_samples(index_global_samples_start, index_global_samples_end)
-        local timer_start = seconds()
-        local samples = {}
-        local index_chunk_start = 1 + math.floor(index_global_samples_start / arguments.chunk_size)
-        local index_chunk_end = math.min(2 + math.ceil(index_global_samples_end / arguments.chunk_size), json.number_of_chunks)
-
-        local iteration = 1
-        for index_chunk = index_chunk_start, index_chunk_end do
-            local chunk = get_chunk(index_chunk)
-            table.move(chunk.samples, 1, #(chunk.samples), ((iteration - 1) * chunk.size) + 1, samples)
-            iteration = iteration + 1
-        end
-
         local result = {}
-        local index_global_samples_length = index_global_samples_end - index_global_samples_start
-        local index_normalized_samples_start = index_global_samples_start % arguments.chunk_size
-        local index_normalized_samples_end = index_normalized_samples_start + index_global_samples_length
-        table.move(samples, index_normalized_samples_start, index_normalized_samples_end, 1, result)
+        local chunk_size = arguments.chunk_size
+        local number_of_chunks = json.number_of_chunks
 
-        -- print("time: " .. (seconds() - timer_start) * 1000)
+        local first_chunk_idx = math.floor(index_global_samples_start / chunk_size)
+        local last_chunk_idx = math.min(math.floor(index_global_samples_end / chunk_size), number_of_chunks - 1)
+
+        local write_pos = 1
+
+        for chunk_idx = first_chunk_idx, last_chunk_idx do
+            local chunk = get_chunk(chunk_idx + 1)
+
+            if chunk and chunk.samples then
+                local chunk_start_global = chunk_idx * chunk_size
+
+                local read_start = math.max(index_global_samples_start - chunk_start_global, 0) + 1
+                local read_end = math.min(index_global_samples_end - chunk_start_global, chunk_size - 1) + 1
+
+                local num_samples = read_end - read_start + 1
+
+                if num_samples > 0 then
+                    table.move(chunk.samples, read_start, read_end, write_pos, result)
+                    write_pos = write_pos + num_samples
+                end
+            end
+        end
 
         return result
     end
@@ -272,7 +279,6 @@ local function command_play()
         end
 
         time_audio = time_audio + time_delta
-        print((time_audio * SAMPLES_PER_SECOND) / arguments.chunk_size)
         --print(time_audio)
 
         --if #sampleBuffer <= 0 then
