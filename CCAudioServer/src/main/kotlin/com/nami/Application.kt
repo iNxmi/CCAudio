@@ -156,6 +156,7 @@ fun Route.httpRoutes(musicPath: Path) {
             "chunk_size_in_bytes" to stream.chunkSizeInBytes,
             "number_of_chunks" to stream.chunks.size,
             "number_of_bytes" to stream.totalBytes,
+            "number_of_samples" to stream.chunks.sumOf { it.size }
         )
 
         call.respond(response)

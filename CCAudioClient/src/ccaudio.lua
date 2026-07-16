@@ -81,7 +81,7 @@ function list()
     end
 end
 
-local AVAILABLE_MEMORY = 1000000
+local AVAILABLE_MEMORY = 1000000 * 0.90
 local SPEAKER_BUFFER_SIZE = 8 * 1024
 function play()
     local speaker = peripheral.find("speaker")
@@ -124,26 +124,21 @@ function play()
 
     local function thread_download()
         local index = 0
-        while running do
-            if index < chunk_count then
-                if #sampleBuffer < AVAILABLE_MEMORY then
-                    local currentChunk = fetch_stream(http_url_default, hash, index)
-                    if currentChunk then
-                        table.move(currentChunk, 1, #currentChunk, #sampleBuffer + 1, sampleBuffer) -- appends the current to sampleBuffer
-                        index = index + 1
-                    else
-                        sleep(0.5)
-                    end
-                else
-                    sleep(0.1)
-                end
-            else
-                -- download finished but we have to keep the thread alive because of WaitForAny()
-                if not finishedDownload then
-                    finishedDownload = true
-                end
-                sleep(1)
+        while index < chunk_count do
+            if #sampleBuffer >= AVAILABLE_MEMORY then
+                sleep(0.05)
+                goto continue
             end
+
+            local chunk = fetch_stream(http_url_default, hash, index)
+            if chunk then
+                table.move(chunk, 1, #chunk, #sampleBuffer + 1, sampleBuffer) -- appends the current to sampleBuffer
+                index = index + 1
+            else
+                sleep(0.5)
+            end
+
+            ::continue::
         end
     end
 
@@ -174,7 +169,9 @@ function play()
                     end
                     print(sum)
 
-                    local function bufferEmptyInterrupt() os.pullEvent("speaker_audio_empty") end
+                    local function bufferEmptyInterrupt()
+                        os.pullEvent("speaker_audio_empty")
+                    end
                     local function pauseInterrupt()
                         while not paused do
                             sleep(0.05)
@@ -191,7 +188,7 @@ function play()
                         print(" unpaused")
                     end
 
-                    ::continue::
+                    :: continue ::
                 end
 
                 if (endIDx == #sampleBuffer) then
@@ -207,7 +204,19 @@ function play()
         end
     end
 
-    parallel.waitForAny(thread_audio, thread_input, thread_download)
+    function launch_audio()
+        parallel.waitForAll(thread_audio)
+    end
+
+    function launch_input()
+
+    end
+
+    function launch_download()
+
+    end
+
+    parallel.waitForAll(thread_audio, thread_input) --thread_download
 end
 
 function get_command()
