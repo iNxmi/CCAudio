@@ -3,7 +3,7 @@ local VERSION = "1.0.0-alpha"
 local MAXIMUM_MEMORY_USAGE = 0.90
 local AVAILABLE_MEMORY = 1000000 * MAXIMUM_MEMORY_USAGE
 
-local SKIP_AMOUNT = 3
+local SKIP_AMOUNT = 25
 local NEW_CHUNKS_PERCENTAGE = 0.7
 
 local SPEAKER_BUFFER_SIZE = 64 * 1024
@@ -191,6 +191,7 @@ local function command_play()
 
         if chunks[chunk_to_fetch] == nil then
             local chunk = fetch_stream(http_url_default, json.hash, chunk_to_fetch - 1)
+
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
@@ -198,39 +199,42 @@ local function command_play()
             end
         end
 
-        for i = chunk_to_fetch - 1, chunk_to_fetch - num_old_chunks, -1 do
-            if i <= 1 then break end
-
-            if chunks[i] == nil then
-                local chunk = fetch_stream(http_url_default, json.hash, i - 1)
-                if chunk then
-                    chunks[i] = chunk
-                else
-                    print("[ERROR] backward chunk " .. i .. " not available")
-                end
+        for i = chunk_to_fetch - 1, num_old_chunks, -1 do
+            if i <= 1 then
+                break
             end
+
+            if chunks[i] ~= nil then
+                goto continue2
+            end
+
+            local chunk = fetch_stream(http_url_default, json.hash, i - 1)
+            if not chunk then
+                print("[ERROR] requested chunk not available")
+            else
+                chunks[i] = chunk
+            end
+
+            ::continue2::
         end
 
-        for i = chunk_to_fetch + 1, chunk_to_fetch + num_new_chunks do
-            if i >= json.number_of_chunks then break end
-
-            if chunks[i] == nil then
-                local chunk = fetch_stream(http_url_default, json.hash, i - 1)
-                if chunk then
-                    chunks[i] = chunk
-                else
-                    print("[ERROR] forward chunk " .. i .. " not available")
-                end
+        for i = chunk_to_fetch + 1, num_new_chunks, 1 do
+            if i >= json.number_of_chunks then
+                break
             end
-        end
 
-        local min_allowed = chunk_to_fetch - num_old_chunks
-        local max_allowed = chunk_to_fetch + num_new_chunks
-
-        for active_index, _ in pairs(chunks) do
-            if active_index < min_allowed or active_index > max_allowed then
-                chunks[active_index] = nil -- Speicher freigeben!
+            if chunks[i] ~= nil then
+                goto continue1
             end
+
+            local chunk = fetch_stream(http_url_default, json.hash, i - 1)
+            if not chunk then
+                print("[ERROR] requested chunk not available")
+            else
+                chunks[i] = chunk
+            end
+
+            ::continue1::
         end
     end
 
