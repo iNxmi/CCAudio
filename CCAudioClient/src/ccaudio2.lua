@@ -3,7 +3,7 @@ local VERSION = "1.0.0-alpha"
 local MAXIMUM_MEMORY_USAGE = 0.90
 local AVAILABLE_MEMORY = 1000000 * MAXIMUM_MEMORY_USAGE
 
-local SKIP_AMOUNT = 25
+local SKIP_AMOUNT = 10
 local NEW_CHUNKS_PERCENTAGE = 0.7
 
 local SPEAKER_BUFFER_SIZE = 64 * 1024
@@ -72,6 +72,14 @@ local function fetch_stream(http_url, hash, index)
     return fetch(url)
 end
 
+local function checksum(list)
+    local sum = 0
+    for _, value in ipairs(list) do
+        sum = sum + value
+    end
+    return sum
+end
+
 local raw_arguments = { ... }
 
 local parser = get_parser()
@@ -137,7 +145,7 @@ local function command_play()
                 is_paused = not is_paused
                 if is_paused then
                     speaker.stop()
-                    print("paused")
+                    print("paused; time_audio="..time_audio)
                 else
                     should_update = true
                     print("unpaused")
@@ -146,78 +154,75 @@ local function command_play()
                 time_audio = time_audio + SKIP_AMOUNT
                 speaker.stop()
                 should_update = true
+                print("time_audio="..time_audio)
             elseif key == keys.left then
                 time_audio = time_audio - SKIP_AMOUNT
                 speaker.stop()
                 should_update = true
+                print("time_audio="..time_audio)
             end
             ::continue3::
             sleep(0.1)
         end
     end
 
-    local function checksum(list)
-        local sum = 0
-        for _, value in ipairs(list) do
-            sum = sum + value
+    local chunk_to_fetch = 6
+    local available_chunk_space_count = math.max(math.ceil(AVAILABLE_MEMORY / arguments.chunk_size), 1)
+    local num_old_chunks = math.floor((1 - NEW_CHUNKS_PERCENTAGE) * available_chunk_space_count)
+    local num_new_chunks = math.max(math.floor(NEW_CHUNKS_PERCENTAGE * available_chunk_space_count), 1)
+    local function fetch_chunks()
+        if chunks[chunk_to_fetch] == nil then
+            local chunk = fetch_stream(http_url_default, json.hash, chunk_to_fetch - 1)
+
+            if not chunk then
+                print("[ERROR] requested chunk not available")
+            else
+                chunks[chunk_to_fetch] = chunk
+            end
         end
-        return sum
+
+        for i = chunk_to_fetch - 1, num_old_chunks, -1 do
+            if i <= 1 then
+                break
+            end
+
+            if chunks[i] ~= nil then
+                goto continue2
+            end
+
+            local chunk = fetch_stream(http_url_default, json.hash, i - 1)
+            if not chunk then
+                print("[ERROR] requested chunk not available")
+            else
+                chunks[i] = chunk
+            end
+
+            ::continue2::
+        end
+
+        for i = chunk_to_fetch + 1, num_new_chunks, 1 do
+            if i >= json.number_of_chunks then
+                break
+            end
+
+            if chunks[i] ~= nil then
+                goto continue1
+            end
+
+            local chunk = fetch_stream(http_url_default, json.hash, i - 1)
+            if not chunk then
+                print("[ERROR] requested chunk not available")
+            else
+                chunks[i] = chunk
+            end
+
+            ::continue1::
+        end
     end
 
-    local chunk_to_fetch = 0
-    local function fetch_chunks()
-        local available_chunk_space_count = math.max(math.ceil(AVAILABLE_MEMORY / arguments.chunk_size), 1)
-        local num_old_chunks = math.floor((1 - NEW_CHUNKS_PERCENTAGE) * available_chunk_space_count)
-        local num_new_chunks = math.max(math.floor(NEW_CHUNKS_PERCENTAGE * available_chunk_space_count), 1)
-
+    local function thread_fetch_chunks()
         while true do
-            if chunks[chunk_to_fetch] == nil then
-                local chunk = fetch_stream(http_url_default, json.hash, chunk_to_fetch - 1)
-
-                if not chunk then
-                    print("[ERROR] requested chunk not available")
-                else
-                    chunks[chunk_to_fetch] = chunk
-                end
-            end
-
-            for i = chunk_to_fetch - 1, num_old_chunks, -1 do
-                if i <= 1 then
-                    break
-                end
-
-                if chunks[i] ~= nil then
-                    goto continue2
-                end
-
-                local chunk = fetch_stream(http_url_default, json.hash, i - 1)
-                if not chunk then
-                    print("[ERROR] requested chunk not available")
-                else
-                    chunks[i] = chunk
-                end
-
-                ::continue2::
-            end
-
-            for i = chunk_to_fetch + 1, num_new_chunks, 1 do
-                if i >= json.number_of_chunks then
-                    break
-                end
-
-                if chunks[i] ~= nil then
-                    goto continue1
-                end
-
-                local chunk = fetch_stream(http_url_default, json.hash, i - 1)
-                if not chunk then
-                    print("[ERROR] requested chunk not available")
-                else
-                    chunks[i] = chunk
-                end
-                ::continue1::
-            end
-
+            fetch_chunks()
             sleep(0.1)
         end
     end
@@ -239,25 +244,25 @@ local function command_play()
         local chunk_size = arguments.chunk_size
         local number_of_chunks = json.number_of_chunks
 
-        local first_chunk_idx = math.floor(index_global_samples_start / chunk_size)
-        local last_chunk_idx = math.min(math.floor(index_global_samples_end / chunk_size), number_of_chunks - 1)
+        local first_chunk_index = math.floor(index_global_samples_start / chunk_size)
+        local last_chunk_index = math.min(math.floor(index_global_samples_end / chunk_size), number_of_chunks - 1)
 
-        local write_pos = 1
+        local write_position = 1
 
-        for chunk_idx = first_chunk_idx, last_chunk_idx do
-            local chunk = get_chunk(chunk_idx + 1)
+        for chunk_index = first_chunk_index, last_chunk_index do
+            local chunk = get_chunk(chunk_index + 1)
 
             if chunk and chunk.samples then
-                local chunk_start_global = chunk_idx * chunk_size
+                local chunk_start_global = chunk_index * chunk_size
 
                 local read_start = math.max(index_global_samples_start - chunk_start_global, 0) + 1
                 local read_end = math.min(index_global_samples_end - chunk_start_global, chunk_size - 1) + 1
 
-                local num_samples = read_end - read_start + 1
+                local number_of_samples = read_end - read_start + 1
 
-                if num_samples > 0 then
-                    table.move(chunk.samples, read_start, read_end, write_pos, result)
-                    write_pos = write_pos + num_samples
+                if number_of_samples > 0 then
+                    table.move(chunk.samples, read_start, read_end, write_position, result)
+                    write_position = write_position + number_of_samples
                 end
             end
         end
@@ -294,9 +299,8 @@ local function command_play()
         should_update = false
     end
 
-    time_last = seconds()
-
-    local function main_loop()
+    local function thread_audio()
+        time_last = seconds()
         while is_running do
             local time_current = seconds()
             time_delta = time_current - time_last
@@ -307,7 +311,7 @@ local function command_play()
         end
     end
 
-    parallel.waitForAny(main_loop, fetch_chunks, input)
+    parallel.waitForAny(thread_audio, thread_fetch_chunks, input)
 end
 
 local function get_command()
