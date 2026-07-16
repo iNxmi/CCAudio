@@ -174,7 +174,7 @@ local function command_play()
     local function get_samples(index_global_samples_start, index_global_samples_end)
         local samples = {}
         local index_chunk_start = 1 + math.floor(index_global_samples_start / arguments.chunk_size)
-        local index_chunk_end = 2 + math.ceil(index_global_samples_end / arguments.chunk_size)
+        local index_chunk_end = math.min(2 + math.ceil(index_global_samples_end / arguments.chunk_size), json.number_of_chunks)
 
         local iteration = 1
         for index_chunk = index_chunk_start, index_chunk_end do
