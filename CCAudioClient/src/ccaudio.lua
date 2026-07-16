@@ -27,10 +27,35 @@ function parser()
     command_play:argument("file", "File to play.")
     command_play:option("-c --chunk_size", "Chunk size (in bytes)", 128 * 1024)
 
-    local command_echo = parser:command("echo", "Test the WebSocket with echo.")
-    command_echo:argument("message", "Message to send the echo.")
-
     return parser
+end
+
+function fetch(url)
+    local response, err = http.get(url)
+    if not response then
+        error("HTTP request failed: " .. tostring(err))
+        return nil
+    end
+
+    local json_text, _ = response.readAll()
+    local json = textutils.unserializeJSON(json_text)
+
+    return json
+end
+
+function fetch_list(http_url)
+    local url = string.format("%s/list", http_url)
+    return fetch(url)
+end
+
+function fetch_request(http_url, index, chunk_size)
+    local url = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, index, chunk_size)
+    return fetch(url)
+end
+
+function fetch_stream(http_url, hash, index)
+    local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, index)
+    return fetch(url)
 end
 
 local raw_arguments = { ... }
@@ -56,34 +81,8 @@ function list()
     end
 end
 
-function fetch(url)
-    local response, err = http.get(url)
-    if not response then
-        error("HTTP request failed: " .. tostring(err))
-        return
-    end
-
-    local json_text, _ = response.readAll()
-    local json = textutils.unserializeJSON(json_text)
-
-    return json
-end
-
-function fetch_list(http_url)
-    local url = string.format("%s/list", http_url)
-    return fetch(url)
-end
-
-function fetch_request(http_url, index, chunk_size)
-    local url = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, index, chunk_size)
-    return fetch(url)
-end
-
-function fetch_stream(http_url, hash, index)
-    local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, index)
-    return fetch(url)
-end
-
+local AVAILABLE_MEMORY = 1000000
+local SPEAKER_BUFFER_SIZE = 8 * 1024
 function play()
     local speaker = peripheral.find("speaker")
     if not speaker then
@@ -92,12 +91,10 @@ function play()
     end
 
     local json = fetch_request(http_url_default, arguments.file, arguments.chunk_size)
-
     local chunk_size = json.chunk_size_in_bytes
     local chunk_count = json.number_of_chunks
     local hash = json.hash
 
-    local AVAILABLE_MEMORY = 1000000
     local sampleBuffer = {}
     local nextDownloadIndex = 0
     local finishedDownload = false
@@ -105,41 +102,28 @@ function play()
     local running = true
     local paused = false
 
-    local time = 0
-
-    local speakerBuffer = {}
-
-    local function timerThread()
-        local timerID = os.startTimer(0.1)
-
-        while running do
-            local event, param = os.pullEvent()
-
-            if event == "timer" and param == timerID then
-                if not paused then
-                    time = time + 1
-                    local total_seconds = time / 10
-                    local x, y = term.getCursorPos()
-                    --term.setCursorPos(1, 50)
-                    --term.clearLine()
-                    --write(string.format("time: %.1fs", total_seconds))
-                    --term.setCursorPos(x, y)
-
-                    local samplesPerStep = 48000 * 0.1
-                    if (#speakerBuffer < samplesPerStep) then
-                        speakerBuffer = { }
-                    else
-                        local temp = {}
-                        table.move(speakerBuffer, samplesPerStep + 1, #speakerBuffer, 1, temp)
-                        speakerBuffer = temp
-                    end
-                end
-                timerID = os.startTimer(0.1)
-            elseif event == "resume" then
-                timerID = os.startTimer(0.1)
-            end
-        end
-    end
+    --local function timerThread()
+    --    local timerID = os.startTimer(0.1)
+    --
+    --    while running do
+    --        local event, param = os.pullEvent()
+    --
+    --        if event == "timer" and param == timerID then
+    --            if not paused then
+    --                time = time + 1
+    --                local total_seconds = time / 10
+    --                local x, y = term.getCursorPos()
+    --                --term.setCursorPos(1, 50)
+    --                --term.clearLine()
+    --                --write(string.format("time: %.1fs", total_seconds))
+    --                --term.setCursorPos(x, y)
+    --            end
+    --            timerID = os.startTimer(0.1)
+    --        elseif event == "resume" then
+    --            timerID = os.startTimer(0.1)
+    --        end
+    --    end
+    --end
 
     local function inputThread()
         while running do
@@ -157,7 +141,7 @@ function play()
                     speaker.stop()
                 else
                     os.queueEvent("resume")
-                    print(" Unpaused")
+                    print(" unpaused")
                 end
             end
 
@@ -174,7 +158,6 @@ function play()
                         table.move(currentChunk, 1, #currentChunk, #sampleBuffer + 1, sampleBuffer) -- appends the current to sampleBuffer
                         nextDownloadIndex = nextDownloadIndex + 1
                     else
-                        print("[ERROR] Could not fetch new data. " .. err)
                         sleep(0.5)
                     end
                 else
@@ -191,10 +174,6 @@ function play()
     end
 
     local function audioThread()
-        -- ############ constants ##############
-        local SPEAKER_BUFFER_SIZE = 64 * 1024 -- 128KB
-        -- #####################################
-
         while running do
             -- determine if song is finished
             if #sampleBuffer == 0 and finishedDownload then
@@ -213,8 +192,6 @@ function play()
                 local beginPlayTime = 0
                 local success = false
                 while not success do
-                    print("while")
-                    print(time)
                     success = speaker.playAudio(audioBuffer)
                     if success then
                         beginPlayTime = time
@@ -234,10 +211,8 @@ function play()
 
                         if paused then
                             speaker.stop()
-                            local pauseTime = time
                             os.pullEvent("resume")
                             print("resume")
-                            local playedSamples = (pauseTime - beginPlayTime) * (48000 / 10)
 
                             -- removed the played samples from audioBuffer
                             --local temp = {}
@@ -262,7 +237,7 @@ function play()
         end
     end
 
-    parallel.waitForAny(audioThread, inputThread, downloadThread, timerThread)
+    parallel.waitForAny(audioThread, inputThread, downloadThread)
 end
 
 function get_command()
