@@ -41,15 +41,8 @@ local arguments = parser:parse(raw_arguments)
 local address = string.format("%s:%d", arguments.address, arguments.port)
 local http_url_default = string.format("http://%s", address)
 
-function get_list()
-    local url = string.format("%s/list", http_url_default)
-    local request = http.get(url)
-    local json_text, _ = request.readAll()
-    return textutils.unserializeJSON(json_text)
-end
-
 function list()
-    local list = get_list()
+    local list = fetch_list(http_url_default)
     for index, file in ipairs(list) do
         local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
 
@@ -76,12 +69,17 @@ function fetch(url)
     return json
 end
 
-function request(http_url, index, chunk_size)
+function fetch_list(http_url)
+    local url = string.format("%s/list", http_url)
+    return fetch(url)
+end
+
+function fetch_request(http_url, index, chunk_size)
     local url = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, index, chunk_size)
     return fetch(url)
 end
 
-function stream(http_url, hash, index)
+function fetch_stream(http_url, hash, index)
     local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, index)
     return fetch(url)
 end
@@ -93,7 +91,7 @@ function play()
         return
     end
 
-    local json = request(http_url_default, arguments.file, arguments.chunk_size)
+    local json = fetch_request(http_url_default, arguments.file, arguments.chunk_size)
 
     local chunk_size = json.chunk_size_in_bytes
     local chunk_count = json.number_of_chunks
@@ -171,7 +169,7 @@ function play()
         while running do
             if nextDownloadIndex < chunk_count then
                 if #sampleBuffer < AVAILABLE_MEMORY then
-                    local currentChunk = stream(http_url_default, hash, nextDownloadIndex)
+                    local currentChunk = fetch_stream(http_url_default, hash, nextDownloadIndex)
                     if currentChunk then
                         table.move(currentChunk, 1, #currentChunk, #sampleBuffer + 1, sampleBuffer) -- appends the current to sampleBuffer
                         nextDownloadIndex = nextDownloadIndex + 1
