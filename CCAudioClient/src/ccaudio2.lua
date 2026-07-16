@@ -3,7 +3,7 @@ local VERSION = "1.0.0-alpha"
 local MAXIMUM_MEMORY_USAGE = 0.90
 local AVAILABLE_MEMORY = 1000000 * MAXIMUM_MEMORY_USAGE
 
-local SKIP_AMOUNT = 10
+local SKIP_AMOUNT = 25
 local NEW_CHUNKS_PERCENTAGE = 0.7
 
 local SPEAKER_BUFFER_SIZE = 64 * 1024
@@ -166,11 +166,17 @@ local function command_play()
         end
     end
 
-    local chunk_to_fetch = 6
+    local fetch_queue = { 1 }
     local available_chunk_space_count = math.max(math.ceil(AVAILABLE_MEMORY / arguments.chunk_size), 1)
     local num_old_chunks = math.floor((1 - NEW_CHUNKS_PERCENTAGE) * available_chunk_space_count)
     local num_new_chunks = math.max(math.floor(NEW_CHUNKS_PERCENTAGE * available_chunk_space_count), 1)
     local function fetch_chunks()
+        if #fetch_queue == 0 then
+            return
+        end
+
+        local chunk_to_fetch = table.remove(fetch_queue)
+
         if chunks[chunk_to_fetch] == nil then
             local chunk = fetch_stream(http_url_default, json.hash, chunk_to_fetch - 1)
 
@@ -229,7 +235,7 @@ local function command_play()
 
     local function get_chunk(index)
         if chunks[index] == nil then
-            chunk_to_fetch = index
+            table.insert(fetch_queue, index)
         end
 
         while chunks[index] == nil do
@@ -250,7 +256,9 @@ local function command_play()
         local write_position = 1
 
         for chunk_index = first_chunk_index, last_chunk_index do
+            local start = seconds()
             local chunk = get_chunk(chunk_index + 1)
+            print((seconds() - start) * 1000 .. "ms")
 
             if chunk and chunk.samples then
                 local chunk_start_global = chunk_index * chunk_size
