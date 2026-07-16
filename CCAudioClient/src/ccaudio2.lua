@@ -3,7 +3,7 @@ local VERSION = "1.0.0-alpha"
 local MAXIMUM_MEMORY_USAGE = 0.90
 local AVAILABLE_MEMORY = 1000000 * MAXIMUM_MEMORY_USAGE
 
-local SKIP_AMOUNT = 1
+local SKIP_AMOUNT = 25
 local NEW_CHUNKS_PERCENTAGE = 0.7
 
 local SPEAKER_BUFFER_SIZE = 64 * 1024
@@ -171,13 +171,9 @@ local function command_play()
         local num_new_chunks = math.max(math.floor(NEW_CHUNKS_PERCENTAGE * available_chunk_space_count), 1)
 
         while true do
-            -- fetch the requested chunk first, then the next 1, then the one before then all the ones after
-            -- if request is chunk 5:  fetch in this order: 5, 6, 4, 7
-
-            -- handle requested chunk
             if chunks[chunk_to_fetch] == nil then
                 local chunk = fetch_stream(http_url_default, json.hash, chunk_to_fetch - 1)
-                --print("fetchi chunkos " .. chunk_to_fetch)
+
                 if not chunk then
                     print("[ERROR] requested chunk not available")
                 else
@@ -185,37 +181,34 @@ local function command_play()
                 end
             end
 
-            -- handle chunks before request
             for i = chunk_to_fetch - 1, num_old_chunks, -1 do
                 if i <= 1 then
                     break
                 end
-                --print("fetchi chunkos " .. i)
+
                 if chunks[i] ~= nil then
-                    --print("chokus already there")
                     goto continue2
                 end
-                -- fetch the chunks
+
                 local chunk = fetch_stream(http_url_default, json.hash, i - 1)
                 if not chunk then
                     print("[ERROR] requested chunk not available")
                 else
                     chunks[i] = chunk
                 end
+
                 ::continue2::
             end
 
-            -- handle chunks after request
             for i = chunk_to_fetch + 1, num_new_chunks, 1 do
                 if i >= json.number_of_chunks then
                     break
                 end
-                --print("fetchi chunkos " .. i)
+
                 if chunks[i] ~= nil then
-                    --print("chunkos already there")
                     goto continue1
                 end
-                -- fetch the chunks
+
                 local chunk = fetch_stream(http_url_default, json.hash, i - 1)
                 if not chunk then
                     print("[ERROR] requested chunk not available")
@@ -230,15 +223,14 @@ local function command_play()
     end
 
     local function get_chunk(index)
-        --print("I wanta have chunk: " .. index)
         if chunks[index] == nil then
-            --print("chunkos not there, pls gimmi")
             chunk_to_fetch = index
         end
+
         while chunks[index] == nil do
-            sleep(0.05) -- wait till fetch() fetched the requested chunk
+            sleep(0.05)
         end
-        --print("Yipiiii, got chunk: " .. index)
+
         return chunks[index]
     end
 
@@ -279,7 +271,6 @@ local function command_play()
         end
 
         time_audio = time_audio + time_delta
-        --print(time_audio)
 
         --if #sampleBuffer <= 0 then
         --    is_running = not (download_index >= json.number_of_chunks - 1)
