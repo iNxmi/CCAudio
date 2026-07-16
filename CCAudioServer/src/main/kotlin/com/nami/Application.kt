@@ -183,6 +183,11 @@ fun Route.httpRoutes(musicPath: Path) {
         val stream = cache[hash]!!
         val chunk = stream.chunks[chunkIndex]
 
-        call.respond(chunk.toList())
+        val response = mapOf(
+            "samples" to chunk.toList(),
+            "size" to chunk.size
+        )
+
+        call.respond(response)
     }
 }

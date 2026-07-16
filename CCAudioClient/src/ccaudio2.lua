@@ -3,11 +3,11 @@ local VERSION = "1.0.0-alpha"
 local MAXIMUM_MEMORY_USAGE = 0.90
 local AVAILABLE_MEMORY = 1000000 * MAXIMUM_MEMORY_USAGE
 
-local SPEAKER_BUFFER_SIZE = 8 * 1024
+local SPEAKER_BUFFER_SIZE = 64 * 1024
 
 local SAMPLES_PER_SECOND = 48000
 
-function parser()
+local function get_parser()
     local argparse = require "argparse__0_7_2"
 
     local parser = argparse("script", "Example Description.")
@@ -37,11 +37,11 @@ function parser()
     return parser
 end
 
-function seconds()
+local function seconds()
     return os.epoch("utc") / 1000
 end
 
-function fetch(url)
+local function fetch(url)
     local response, err = http.get(url)
     if not response then
         error("HTTP request failed: " .. tostring(err))
@@ -54,30 +54,30 @@ function fetch(url)
     return json
 end
 
-function fetch_list(http_url)
+local function fetch_list(http_url)
     local url = string.format("%s/list", http_url)
     return fetch(url)
 end
 
-function fetch_request(http_url, index, chunk_size)
+local function fetch_request(http_url, index, chunk_size)
     local url = string.format("%s/request?file=%s&chunkSizeInBytes=%d", http_url, index, chunk_size)
     return fetch(url)
 end
 
-function fetch_stream(http_url, hash, index)
+local function fetch_stream(http_url, hash, index)
     local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, index)
     return fetch(url)
 end
 
 local raw_arguments = { ... }
 
-local parser = parser()
+local parser = get_parser()
 local arguments = parser:parse(raw_arguments)
 
 local address = string.format("%s:%d", arguments.address, arguments.port)
 local http_url_default = string.format("http://%s", address)
 
-function list()
+local function command_list()
     local list = fetch_list(http_url_default)
     for index, file in ipairs(list) do
         local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
@@ -92,7 +92,7 @@ function list()
     end
 end
 
-function play()
+local function command_play()
     local speaker = peripheral.find("speaker")
     if not speaker then
         error("No speaker found.")
@@ -100,11 +100,6 @@ function play()
     end
 
     local json = fetch_request(http_url_default, arguments.file, arguments.chunk_size)
-    print(textutils.serializeJSON(json))
-
-    local sampleBuffer = {}
-
-    local download_index = 0
 
     local is_running = true
     local is_paused = false
@@ -114,9 +109,11 @@ function play()
     local time_delta = 0
     local time_audio = 0
 
+    local index_samples_last = 0
+
     local chunks = {}
 
-    function input()
+    local function input()
         os.startTimer(0)
         local event = {os.pullEvent()}
         if event[1] ~= "key" then
@@ -150,90 +147,78 @@ function play()
         end
     end
 
-    function download()
-        if download_index >= json.number_of_chunks then
-            return
+    local function checksum(list)
+        local sum = 0
+        for _, value in ipairs(list) do
+            sum = sum + value
+        end
+        return sum
+    end
+
+    local function get_chunk(index)
+        if chunks[index] == nil then
+            local chunk = fetch_stream(http_url_default, json.hash, index - 1)
+            if not chunk then
+                return
+            end
+
+            chunks[index] = chunk
         end
 
-        if #sampleBuffer >= AVAILABLE_MEMORY then
-            return
-        end
-
-        if chunks[download_index] ~= nil then
-            return
-        end
-
-        local chunk = fetch_stream(http_url_default, json.hash, download_index)
-        if not chunk then
-            return
-        end
-
-        chunks[download_index] = chunk
-        download_index = download_index + 1
+        return chunks[index]
     end
 
     -- index_global_samples_start   starting from 1
     -- index_global_samples_start   is inclusive
     -- index_global_samples_end     is inclusive
-    function get_samples(index_global_samples_start, index_global_samples_end)
+    local function get_samples(index_global_samples_start, index_global_samples_end)
         local samples = {}
+        local index_chunk_start = 1 + math.floor(index_global_samples_start / arguments.chunk_size)
+        local index_chunk_end = 2 + math.ceil(index_global_samples_end / arguments.chunk_size)
 
-        local index_chunk_start = math.floor(index_global_samples_start / SAMPLES_PER_SECOND)
-        local index_chunk_end = math.ceil(index_global_samples_end / SAMPLES_PER_SECOND)
-
-        for index = index_chunk_start, index_chunk_end do
-            local chunk = chunks[index]
-            table.move(chunk, 1, #chunk, 1, samples)
+        local iteration = 1
+        for index_chunk = index_chunk_start, index_chunk_end do
+            local chunk = get_chunk(index_chunk)
+            table.move(chunk.samples, 1, #(chunk.samples), ((iteration - 1) * chunk.size) + 1, samples)
+            iteration = iteration + 1
         end
 
+        local result = {}
         local index_global_samples_length = index_global_samples_end - index_global_samples_start
-        local index_normalized_samples_start = index_global_samples_start % SAMPLES_PER_SECOND
+        local index_normalized_samples_start = index_global_samples_start % arguments.chunk_size
         local index_normalized_samples_end = index_normalized_samples_start + index_global_samples_length
-        return unpack(samples, index_normalized_samples_start, index_normalized_samples_end)
+        table.move(samples, index_normalized_samples_start, index_normalized_samples_end, 1, result)
+
+        return result
     end
 
-    function audio()
+    local function audio()
         if is_paused then
             return
         end
 
         time_audio = time_audio + time_delta
-        print(time_audio)
+        --print(time_audio)
 
-        if #sampleBuffer <= 0 then
-            is_running = not (download_index >= json.number_of_chunks - 1)
-            return
-        end
+        --if #sampleBuffer <= 0 then
+        --    is_running = not (download_index >= json.number_of_chunks - 1)
+        --    return
+        --end
 
-        local speakerBuffer = {}
-
-        local index_end = math.min(#sampleBuffer, SPEAKER_BUFFER_SIZE)
-        local index_start = 1
         if should_update then
-            local chunk = math.floor((time_audio * SAMPLES_PER_SECOND) / SPEAKER_BUFFER_SIZE)
-            local playedSamples = (time_audio * SAMPLES_PER_SECOND) % SPEAKER_BUFFER_SIZE
-            index_start = math.floor(playedSamples)
+            index_samples_last = time_audio * SAMPLES_PER_SECOND
         end
 
-        table.move(sampleBuffer, index_start, index_end, 1, speakerBuffer)
+        local index_samples_start = index_samples_last + 1
+        local index_samples_end = index_samples_start + SPEAKER_BUFFER_SIZE - 1
+        local buffer = get_samples(index_samples_start, index_samples_end)
 
-        local success = speaker.playAudio(speakerBuffer)
+        local success = speaker.playAudio(buffer)
         if not success then
             return
         end
 
-        --local sum = 0
-        --for _, value in ipairs(speakerBuffer) do
-        --    sum = sum + value
-        --end
-        --print(sum)
-
-        if not should_update then
-            local temp = {}
-            table.move(sampleBuffer, index_end + 1, #sampleBuffer, 1, temp)
-            sampleBuffer = temp
-        end
-
+        index_samples_last = index_samples_end
         should_update = false
     end
 
@@ -244,22 +229,19 @@ function play()
         time_last = time_current
 
         input()
-        download()
         audio()
     end
 end
 
-function get_command()
+local function get_command()
     if arguments.list then
-        return list
+        return command_list
     elseif arguments.play then
-        return play
-    elseif arguments.echo then
-        return echo
+        return command_play
     end
 end
 
-function execute()
+local function execute()
     if arguments.version then
         print(VERSION)
     end
