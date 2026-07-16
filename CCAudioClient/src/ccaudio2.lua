@@ -3,6 +3,9 @@ local VERSION = "1.0.0-alpha"
 local MAXIMUM_MEMORY_USAGE = 0.90
 local AVAILABLE_MEMORY = 1000000 * MAXIMUM_MEMORY_USAGE
 
+local SKIP_AMOUNT = 1
+local NEW_CHUNKS_PERCENTAGE = 0.7
+
 local SPEAKER_BUFFER_SIZE = 64 * 1024
 
 local SAMPLES_PER_SECOND = 48000
@@ -114,36 +117,42 @@ local function command_play()
     local chunks = {}
 
     local function input()
-        os.startTimer(0)
-        local event = {os.pullEvent()}
-        if event[1] ~= "key" then
-            return
-        end
+        while true do
+            local event = {os.pullEvent("key")}
+            local hold = event[3]
+            local key = event[2]
 
-        local hold = event[3]
-        if hold then
-            return
-        end
-
-        local key = event[2]
-        if key == keys.q then
-            is_running = false
-            speaker.stop()
-        elseif key == keys.p or key == keys.space then
-            is_paused = not is_paused
-            if is_paused then
-                speaker.stop()
-                print("paused")
-            else
-                should_update = true
-                print("unpaused")
+            if event[1] ~= "key" then
+                goto continue3
             end
-        elseif key == 205 then
-            time_audio = time_audio + 10
-            should_update = true
-        elseif key == 203 then
-            time_audio = time_audio - 10
-            should_update = true
+
+            if hold then
+                goto continue3
+            end
+
+            if key == keys.q then
+                is_running = false
+                speaker.stop()
+            elseif key == keys.p or key == keys.space then
+                is_paused = not is_paused
+                if is_paused then
+                    speaker.stop()
+                    print("paused")
+                else
+                    should_update = true
+                    print("unpaused")
+                end
+            elseif key == keys.right then
+                time_audio = time_audio + SKIP_AMOUNT
+                speaker.stop()
+                should_update = true
+            elseif key == keys.left then
+                time_audio = time_audio - SKIP_AMOUNT
+                speaker.stop()
+                should_update = true
+            end
+            ::continue3::
+            sleep(0.1)
         end
     end
 
@@ -155,23 +164,86 @@ local function command_play()
         return sum
     end
 
-    local function get_chunk(index)
-        if chunks[index] == nil then
-            local chunk = fetch_stream(http_url_default, json.hash, index - 1)
-            if not chunk then
-                return
+    local chunk_to_fetch = 0
+    local function fetch_chunks()
+        local available_chunk_space_count = math.max(math.ceil(AVAILABLE_MEMORY / arguments.chunk_size), 1)
+        local num_old_chunks = math.floor((1 - NEW_CHUNKS_PERCENTAGE) * available_chunk_space_count)
+        local num_new_chunks = math.max(math.floor(NEW_CHUNKS_PERCENTAGE * available_chunk_space_count), 1)
+
+        while true do
+            -- fetch the requested chunk first, then the next 1, then the one before then all the ones after
+            -- if request is chunk 5:  fetch in this order: 5, 6, 4, 7
+
+            -- handle requested chunk
+            if chunks[chunk_to_fetch] == nil then
+                local chunk = fetch_stream(http_url_default, json.hash, chunk_to_fetch - 1)
+                --print("fetchi chunkos " .. chunk_to_fetch)
+                if not chunk then
+                    print("[ERROR] requested chunk not available")
+                else
+                    chunks[chunk_to_fetch] = chunk
+                end
             end
 
-            chunks[index] = chunk
-        end
+            -- handle chunks before request
+            for i = chunk_to_fetch - 1, num_old_chunks, -1 do
+                if i <= 1 then
+                    break
+                end
+                --print("fetchi chunkos " .. i)
+                if chunks[i] ~= nil then
+                    --print("chokus already there")
+                    goto continue2
+                end
+                -- fetch the chunks
+                local chunk = fetch_stream(http_url_default, json.hash, i - 1)
+                if not chunk then
+                    print("[ERROR] requested chunk not available")
+                else
+                    chunks[i] = chunk
+                end
+                ::continue2::
+            end
 
+            -- handle chunks after request
+            for i = chunk_to_fetch + 1, num_new_chunks, 1 do
+                if i >= json.number_of_chunks then
+                    break
+                end
+                --print("fetchi chunkos " .. i)
+                if chunks[i] ~= nil then
+                    --print("chunkos already there")
+                    goto continue1
+                end
+                -- fetch the chunks
+                local chunk = fetch_stream(http_url_default, json.hash, i - 1)
+                if not chunk then
+                    print("[ERROR] requested chunk not available")
+                else
+                    chunks[i] = chunk
+                end
+                ::continue1::
+            end
+
+            sleep(0.1)
+        end
+    end
+
+    local function get_chunk(index)
+        --print("I wanta have chunk: " .. index)
+        if chunks[index] == nil then
+            --print("chunkos not there, pls gimmi")
+            chunk_to_fetch = index
+        end
+        while chunks[index] == nil do
+            sleep(0.05) -- wait till fetch() fetched the requested chunk
+        end
+        --print("Yipiiii, got chunk: " .. index)
         return chunks[index]
     end
 
-    -- index_global_samples_start   starting from 1
-    -- index_global_samples_start   is inclusive
-    -- index_global_samples_end     is inclusive
     local function get_samples(index_global_samples_start, index_global_samples_end)
+        local timer_start = seconds()
         local samples = {}
         local index_chunk_start = 1 + math.floor(index_global_samples_start / arguments.chunk_size)
         local index_chunk_end = math.min(2 + math.ceil(index_global_samples_end / arguments.chunk_size), json.number_of_chunks)
@@ -189,6 +261,8 @@ local function command_play()
         local index_normalized_samples_end = index_normalized_samples_start + index_global_samples_length
         table.move(samples, index_normalized_samples_start, index_normalized_samples_end, 1, result)
 
+        -- print("time: " .. (seconds() - timer_start) * 1000)
+
         return result
     end
 
@@ -198,6 +272,7 @@ local function command_play()
         end
 
         time_audio = time_audio + time_delta
+        print((time_audio * SAMPLES_PER_SECOND) / arguments.chunk_size)
         --print(time_audio)
 
         --if #sampleBuffer <= 0 then
@@ -223,14 +298,19 @@ local function command_play()
     end
 
     time_last = seconds()
-    while is_running do
-        local time_current = seconds()
-        time_delta = time_current - time_last
-        time_last = time_current
 
-        input()
-        audio()
+    local function main_loop()
+        while is_running do
+            local time_current = seconds()
+            time_delta = time_current - time_last
+            time_last = time_current
+
+            audio()
+            sleep(0.05)
+        end
     end
+
+    parallel.waitForAny(main_loop, fetch_chunks, input)
 end
 
 local function get_command()
