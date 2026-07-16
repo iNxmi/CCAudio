@@ -82,18 +82,58 @@ function play()
     local json = textutils.unserializeJSON(json_text)
 
     local chunk_size = json.chunk_size_in_bytes
+
     local chunk_count = json.number_of_chunks
     local hash = json.hash
 
-    print("chunkCount: " .. chunk_count)
-
-    local MAX_CHUNKS = math.floor(1000000 / chunk_size)
-    local chunkBuffer = {}
+    local AVAILABLE_MEMORY = 1000000
+    local sampleBuffer = {}
     local nextDownloadIndex = 0
-    local nextPlayIndex = 0
+    local finishedDownload = false
 
     local running = true
     local paused = false
+
+    local time = 0
+
+    local monitor = peripheral.wrap("right")
+    monitor.setTextScale(0.5)
+    term.redirect(monitor)
+    term.clear()
+
+    local speakerBuffer = {}
+
+    local function timerThread()
+        local timerID = os.startTimer(0.1)
+
+        while running do
+            local event, param = os.pullEvent()
+
+            if event == "timer" and param == timerID then
+                if not paused then
+                    time = time + 1
+                    local total_seconds = time / 10
+                    local x, y = term.getCursorPos()
+                    --term.setCursorPos(1, 50)
+                    --term.clearLine()
+                    --write(string.format("time: %.1fs", total_seconds))
+                    --term.setCursorPos(x, y)
+
+                    local samplesPerStep = 48000 * 0.1
+                    if (#speakerBuffer < samplesPerStep) then
+                        speakerBuffer = { }
+                    else
+                        local temp = {}
+                        table.move(speakerBuffer, samplesPerStep + 1, #speakerBuffer, 1, temp)
+                        speakerBuffer = temp
+                    end
+                end
+                timerID = os.startTimer(0.1)
+            elseif event == "resume" then
+                timerID = os.startTimer(0.1)
+            end
+        end
+    end
 
     local function inputThread()
         while running do
@@ -101,30 +141,34 @@ function play()
 
             if key == keys.q then
                 running = false
+                -- speaker.stop()
                 break
             elseif key == keys.p then
                 paused = not paused
                 if paused then
-                    speaker.stop()
-                    print("paused")
+                    print(" paused")
+                    os.queueEvent("paused")
+                    -- speaker.stop()
                 else
-                    print("Unpaused")
+                    os.queueEvent("resume")
+                    print(" Unpaused")
                 end
             end
+            sleep(0.05)
         end
     end
 
     local function downloadThread()
         while running do
             if nextDownloadIndex < chunk_count then
-                if #chunkBuffer < MAX_CHUNKS then
+                if #sampleBuffer < AVAILABLE_MEMORY then
                     local url = string.format("%s/stream?hash=%s&chunk=%d", http_url, hash, nextDownloadIndex)
                     local res, err = http.get(url, {}, true)
 
                     if res then
                         local jsonChunkText = res.readAll()
                         local currentChunk = textutils.unserializeJSON(jsonChunkText)
-                        table.insert(chunkBuffer, currentChunk)
+                        table.move(currentChunk, 1, #currentChunk, #sampleBuffer + 1, sampleBuffer) -- appends the current to sampleBuffer
                         nextDownloadIndex = nextDownloadIndex + 1
                         res.close()
                     else
@@ -136,73 +180,86 @@ function play()
                 end
             else
                 -- download finished but we have to keep the thread alive because of WaitForAny()
-                sleep(0.5)
+                if not finishedDownload then
+                    finishedDownload = true
+                end
+                sleep(1)
             end
         end
     end
 
     local function audioThread()
-        local chunkSizeLimit = 128 * 1024
+        -- ############ constants ##############
+        local SPEAKER_BUFFER_SIZE = 64 * 1024 -- 128KB
+        -- #####################################
 
-        while running and nextPlayIndex < chunk_count do
-            while paused and running do
-                speaker.stop()
-                sleep(0.1)
+        while running do
+            -- determine if song is finished
+            if #sampleBuffer == 0 and finishedDownload then
+                running = false
+                break
             end
 
-            if #chunkBuffer > 0 then
-                local tmpBuffer = table.remove(chunkBuffer, 1)
-                nextPlayIndex = nextPlayIndex + 1
+            if #sampleBuffer > 0 then
+                -- fill audioBuffer with values
+                local audioBuffer = {}
+                local endIDx = math.min(#sampleBuffer, SPEAKER_BUFFER_SIZE)
+                table.move(sampleBuffer, 1, endIDx, 1, audioBuffer)
 
-                for startIdx = 1, #tmpBuffer, chunkSizeLimit do
-                    local audioBuffer = {}
+                -- sending the buffer to the speaker
+                ::beginPlay::
+                local beginPlayTime = 0
+                local success = false
+                while not success do
+                    print("while")
+                    success = speaker.playAudio(audioBuffer)
+                    if success then
+                        beginPlayTime = time
+                        --able.move(audioBuffer, 1, #audioBuffer, #speakerBuffer + 1, speakerBuffer) -- appends audioBuffer to speakerBuffer
+                    else
+                        local function bufferEmptyInterrupt()
+                            os.pullEvent("speaker_audio_empty")
+                        end
+                        local function pauseInterrupt()
+                            os.pullEvent("paused")
+                        end
+                        local function resumeInterrupt()
+                            os.pullEvent("resume")
+                        end
 
-                    while paused and running do
-                        speaker.stop()
-                        sleep(0.1)
-                    end
+                        parallel.waitForAny(bufferEmptyInterrupt, pauseInterrupt)
 
-                    for j = startIdx, math.min(startIdx + chunkSizeLimit - 1, #tmpBuffer) do
-                        table.insert(audioBuffer, tmpBuffer[j])
-                    end
+                        if paused then
+                            speaker.stop()
+                            local pauseTime = time
+                            os.pullEvent("resume")
+                            print("resume")
+                            local playedSamples = (pauseTime - beginPlayTime) * (48000 / 10)
 
-                    if #audioBuffer > 0 then
-                        while not speaker.playAudio(audioBuffer) and running do
-                            local function bufferEmptyInterrupt()
-                                os.pullEvent("speaker_audio_empty")
-                            end
-                            local function pauseInterrupt()
-                                while not paused and running do
-                                    sleep(0.05)
-                                end
-                            end
-                            parallel.waitForAny(bufferEmptyInterrupt, pauseInterrupt)
-                            while paused do
-                                speaker.stop()
-                                sleep(0.1)
-                            end
+                            -- removed the played samples from audioBuffer
+                            --local temp = {}
+                            --table.move(audioBuffer, playedSamples + 1, #audioBuffer, 1, temp)
+                            --audioBuffer = temp
+                            goto beginPlay
                         end
                     end
+                end
+
+                -- remove what we put in audioBuffer from sampleBuffer
+                if (endIDx == #sampleBuffer) then
+                    sampleBuffer = {}
+                else
+                    local temp = {}
+                    table.move(sampleBuffer, endIDx + 1, #sampleBuffer, 1, temp)
+                    sampleBuffer = temp
                 end
             else
                 sleep(0.05)
             end
         end
-        running = false
     end
 
-    parallel.waitForAny(audioThread, inputThread, downloadThread)
-end
-
-function echo()
-    local url = string.format("%s/echo", websocket_url)
-    local socket = assert(http.websocket(url))
-
-    socket.send(arguments.message)
-    local response, is_binary = socket.receive()
-    socket.close()
-
-    print(response)
+    parallel.waitForAny(audioThread, inputThread, downloadThread, timerThread)
 end
 
 function get_command()
