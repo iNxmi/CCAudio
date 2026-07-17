@@ -1,13 +1,20 @@
-local instance = {}
+local api = require("api")
 
-local api = require("../api/api")
+local CommandList = {}
+local CommandList_mt = { __index = CommandList }
 
-function instance.get_command(argparse_command)
-
+function CommandList.new()
+    local self = {}
+    setmetatable(self, CommandList_mt)
+    return self
 end
 
-function instance.execute()
-    local list = api.fetch_list(http_url_default)
+function CommandList:register(parser)
+    parser:command("list", "List music.")
+end
+
+function CommandList:execute(arguments)
+    local list = api.fetch_list("http://"..arguments.address .. ":" .. arguments.port)
     for index, file in ipairs(list) do
         local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
 
@@ -23,4 +30,4 @@ function instance.execute()
     end
 end
 
-return instance
+return CommandList
