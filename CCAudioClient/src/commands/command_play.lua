@@ -211,9 +211,16 @@ function CommandPlay:execute(arguments)
         local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
 
         local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
+        local progress_length = width - #duration_current - #duration_total - 6
 
-        local progress = string.rep("=", (width - #duration_current - #duration_total - 5) * progress_percentage) .. string.rep("-", (width - #duration_current - #duration_total - 5) * (1 - progress_percentage))
-        local result = string.format(" %s |%s| %s ", duration_current, progress, duration_total)
+        local progress_current_string = string.rep("=", math.ceil(progress_length * progress_percentage))
+        if #progress_current_string >= 1 then
+            progress_current_string = string.sub(progress_current_string, 1, #progress_current_string - 1) .. ">"
+        end
+        local progress_pending_string = string.rep("-", math.floor(progress_length * (1 - progress_percentage)))
+        local progress_string = progress_current_string .. progress_pending_string
+
+        local result = string.format(" %s |%s| %s ", duration_current, progress_string, duration_total)
         term.write(result)
     end
 
@@ -245,8 +252,25 @@ function CommandPlay:execute(arguments)
         end
 
         local buffer = get_samples(index_samples_start, index_samples_end)
-        local mapped = map(buffer, function(x)
-            return math.max(math.min(x * (math.pow(10, volume_in_decibels / 20)), 127), -128)
+        if #buffer <= 0 then
+            is_running = false
+            return
+        end
+
+        local mapped = map(buffer, function(sample)
+
+            local function clip(value, min, max)
+                return math.max(math.min(max, value),min)
+            end
+
+            local normalized = clip(sample, -127, 127) / 127
+            local amplified = normalized * (math.pow(10, volume_in_decibels / 20))
+            local soft_clipped = math.tanh(amplified)
+            local denormalized = soft_clipped * 127
+            local dithered = denormalized + (math.random() - 0.5) + (math.random() - 0.5) + 0.5
+            local rounded = math.floor(dithered)
+            local hard_clipped = clip(rounded, -127, 127)
+            return hard_clipped
         end)
 
         local success = speaker.playAudio(mapped)
