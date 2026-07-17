@@ -33,7 +33,7 @@ local function get_command()
     end
 end
 
-local function execute(arguments)
+local function execute()
     if arguments.version then
         print(CONSTANTS.VERSION)
     end
@@ -47,4 +47,4 @@ local function execute(arguments)
     return command:execute(arguments)
 end
 
-local result = execute(arguments)
+local result = execute()

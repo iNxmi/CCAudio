@@ -28,7 +28,7 @@ function CommandPlay:execute(arguments)
         return
     end
 
-    local json = api.fetch_request("http://"..arguments.address .. ":" .. arguments.port, arguments.file, arguments.chunk_size)
+    local json = api.fetch_request("http://" .. arguments.address .. ":" .. arguments.port, arguments.file, arguments.chunk_size)
 
     local is_running = true
     local is_paused = false
@@ -46,7 +46,7 @@ function CommandPlay:execute(arguments)
 
     local function input()
         while true do
-            local event = {os.pullEvent("key")}
+            local event = { os.pullEvent("key") }
             local hold = event[3]
             local key = event[2]
 
@@ -65,33 +65,27 @@ function CommandPlay:execute(arguments)
                 is_paused = not is_paused
                 if is_paused then
                     speaker.stop()
-                    print("paused; time_audio="..time_audio)
                 else
                     should_update = true
-                    print("unpaused")
                 end
             elseif key == keys.right then
-                time_audio = time_audio + CONSTANTS.SKIP_AMOUNT
+                time_audio = math.min(math.max(time_audio + CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
                 speaker.stop()
                 should_update = true
-                print("time_audio="..time_audio)
             elseif key == keys.left then
-                time_audio = time_audio - CONSTANTS.SKIP_AMOUNT
+                time_audio = math.min(math.max(time_audio - CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
                 speaker.stop()
                 should_update = true
-                print("time_audio="..time_audio)
             elseif key == keys.up then
                 volume_in_decibels = volume_in_decibels + 1
                 speaker.stop()
                 should_update = true
-                print("volume_in_decibels="..volume_in_decibels)
             elseif key == keys.down then
                 volume_in_decibels = volume_in_decibels - 1
                 speaker.stop()
                 should_update = true
-                print("volume_in_decibels="..volume_in_decibels)
             end
-            ::continue3::
+            :: continue3 ::
             sleep(0.1)
         end
     end
@@ -108,7 +102,7 @@ function CommandPlay:execute(arguments)
         local chunk_to_fetch = table.remove(fetch_queue)
 
         if chunks[chunk_to_fetch] == nil then
-            local chunk = api.fetch_stream("http://"..arguments.address .. ":" .. arguments.port, json.hash, chunk_to_fetch - 1)
+            local chunk = api.fetch_stream("http://" .. arguments.address .. ":" .. arguments.port, json.hash, chunk_to_fetch - 1)
 
             if not chunk then
                 print("[ERROR] requested chunk not available")
@@ -126,14 +120,14 @@ function CommandPlay:execute(arguments)
                 goto continue2
             end
 
-            local chunk = api.fetch_stream("http://"..arguments.address .. ":" .. arguments.port, json.hash, i - 1)
+            local chunk = api.fetch_stream("http://" .. arguments.address .. ":" .. arguments.port, json.hash, i - 1)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
                 chunks[i] = chunk
             end
 
-            ::continue2::
+            :: continue2 ::
         end
 
         for i = chunk_to_fetch + 1, num_new_chunks, 1 do
@@ -145,14 +139,14 @@ function CommandPlay:execute(arguments)
                 goto continue1
             end
 
-            local chunk = api.fetch_stream("http://"..arguments.address .. ":" .. arguments.port, json.hash, i - 1)
+            local chunk = api.fetch_stream("http://" .. arguments.address .. ":" .. arguments.port, json.hash, i - 1)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
                 chunks[i] = chunk
             end
 
-            ::continue1::
+            :: continue1 ::
         end
     end
 
@@ -206,6 +200,23 @@ function CommandPlay:execute(arguments)
         return result
     end
 
+    local function render()
+        local position_x, position_y = term.getCursorPos()
+        local width, height = term.getSize()
+
+        term.clearLine()
+        term.setCursorPos(1, position_y)
+
+        local duration_current = os.date("!%H:%M:%S", time_audio)
+        local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
+
+        local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
+
+        local progress = string.rep("-", (width - #duration_current - #duration_total - 6) * progress_percentage) .. string.rep(" ", (width - #duration_current - #duration_total - 6) * (1 - progress_percentage))
+        local result = string.format(" %s |%s| %s ", duration_current, progress, duration_total)
+        term.write(result)
+    end
+
     local function audio()
         if is_paused then
             return
@@ -234,7 +245,9 @@ function CommandPlay:execute(arguments)
         end
 
         local buffer = get_samples(index_samples_start, index_samples_end)
-        local mapped = map(buffer, function(x) return math.max(math.min(x * (math.pow(10, volume_in_decibels / 20)), 127), -128) end)
+        local mapped = map(buffer, function(x)
+            return math.max(math.min(x * (math.pow(10, volume_in_decibels / 20)), 127), -128)
+        end)
 
         local success = speaker.playAudio(mapped)
         if not success then
@@ -255,6 +268,7 @@ function CommandPlay:execute(arguments)
             time_last = time_current
 
             audio()
+            render()
             sleep(0.05)
         end
     end
