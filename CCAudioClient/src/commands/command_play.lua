@@ -212,7 +212,7 @@ function CommandPlay:execute(arguments)
 
         local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
 
-        local progress = string.rep("-", (width - #duration_current - #duration_total - 6) * progress_percentage) .. string.rep(" ", (width - #duration_current - #duration_total - 6) * (1 - progress_percentage))
+        local progress = string.rep("=", (width - #duration_current - #duration_total - 5) * progress_percentage) .. string.rep("-", (width - #duration_current - #duration_total - 5) * (1 - progress_percentage))
         local result = string.format(" %s |%s| %s ", duration_current, progress, duration_total)
         term.write(result)
     end
