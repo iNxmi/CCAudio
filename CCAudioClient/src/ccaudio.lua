@@ -94,12 +94,14 @@ local function command_list()
         local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
 
         if index % 2 == 0 then
-            term.setTextColour(colours.red)
+            term.setTextColour(colors.red)
         else
-            term.setTextColour(colours.green)
+            term.setTextColour(colors.green)
         end
 
         textutils.pagedPrint(message)
+
+        term.setTextColour(colors.white)
     end
 end
 
@@ -120,7 +122,7 @@ local function command_play()
     local time_delta = 0
     local time_audio = 0
 
-    local volume = 1
+    local volume_in_decibels = 0
 
     local index_samples_last = 0
 
@@ -163,15 +165,15 @@ local function command_play()
                 should_update = true
                 print("time_audio="..time_audio)
             elseif key == keys.up then
-                volume = volume + 0.1
+                volume_in_decibels = volume_in_decibels + 1
                 speaker.stop()
                 should_update = true
-                print("volume="..volume)
+                print("volume_in_decibels="..volume_in_decibels)
             elseif key == keys.down then
-                volume = volume - 0.1
+                volume_in_decibels = volume_in_decibels - 1
                 speaker.stop()
                 should_update = true
-                print("volume="..volume)
+                print("volume_in_decibels="..volume_in_decibels)
             end
             ::continue3::
             sleep(0.1)
@@ -316,7 +318,7 @@ local function command_play()
         end
 
         local buffer = get_samples(index_samples_start, index_samples_end)
-        local mapped = map(buffer, function(x) return math.max(math.min(x * volume, 127), -128) end)
+        local mapped = map(buffer, function(x) return math.max(math.min(x * (math.pow(10, volume_in_decibels / 20)), 127), -128) end)
 
         local success = speaker.playAudio(mapped)
         if not success then
