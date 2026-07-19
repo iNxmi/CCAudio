@@ -10,9 +10,13 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.slf4j.event.Level
+import java.awt.Color
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
+import javax.imageio.ImageIO
 import kotlin.io.path.*
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -53,12 +57,96 @@ fun getKeyHash(path: Path, chunkSizeInBytes: Int): String {
 
 val cache = mutableMapOf<String, Stream>()
 val music = sortedSetOf<Music>(compareBy (String.CASE_INSENSITIVE_ORDER) { it.path.toString() })
+
+val COLORS = mapOf(
+    "0" to Color(0xF0, 0xF0, 0xF0),
+    "1" to Color(0xF2, 0xB2, 0x33),
+    "2" to Color(0xE5, 0x7F, 0xD8),
+    "3" to Color(0x99, 0xB2, 0xF2),
+    "4" to Color(0xDE, 0xDE, 0x6C),
+    "5" to Color(0x7F, 0xCC, 0x19),
+    "6" to Color(0xF2, 0xB2, 0xCC),
+    "7" to Color(0x4C, 0x4C, 0x4C),
+    "8" to Color(0x99, 0x99, 0x99),
+    "9" to Color(0x4C, 0x99, 0xB2),
+    "a" to Color(0xB2, 0x66, 0xE5),
+    "b" to Color(0x33, 0x66, 0xCC),
+    "c" to Color(0x7F, 0x66, 0x4C),
+    "d" to Color(0x57, 0xA6, 0x4E),
+    "e" to Color(0xCC, 0x4C, 0x4C),
+    "f" to Color(0x11, 0x11, 0x11)
+)
+
+fun createCover(musicPath: Path): String? {
+    println(musicPath)
+
+    val output = createTempFile(prefix = "cc_audio_server", suffix = ".png")
+
+    val command = listOf(
+        "ffmpeg",
+        "-y",
+        "-i", musicPath.absolutePathString(),
+        "-an",
+        "-vcodec", "copy",
+        output.absolutePathString()
+    )
+
+    val process = ProcessBuilder(command).start()
+
+    val exitCode = process.waitFor()
+    if (exitCode != 0) {
+        deleteFile(output)
+        println(process.errorStream.bufferedReader().readText())
+        return null
+    }
+
+    val originalImage = ImageIO.read(output.toFile())
+    deleteFile(output)
+
+    val resizedImage = BufferedImage( 96,64,BufferedImage.TYPE_INT_RGB)
+    val graphics = resizedImage.createGraphics()
+    graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+    graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+    graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    graphics.drawImage(originalImage, 0, 0,  96,64, null)
+    graphics.dispose()
+
+    val result = StringBuilder()
+    for(y in 0 until 64) {
+        for (x in 0 until 96) {
+            val originalColor = Color(resizedImage.getRGB(x, y))
+            var mappedColorCode = ""
+            var lastDistance = Int.MAX_VALUE
+            for ((cKey, cValue) in COLORS) {
+                val rComponent = originalColor.red - cValue.red
+                val gComponent = originalColor.green - cValue.green
+                val bComponent = originalColor.blue - cValue.blue
+
+                val distance = rComponent * rComponent + gComponent * gComponent + bComponent * bComponent
+                if (distance >= lastDistance)
+                    continue
+
+                lastDistance = distance
+                mappedColorCode = cKey
+            }
+            result.append(mappedColorCode)
+        }
+        result.appendLine()
+    }
+
+    return result.toString()
+}
+
 fun updateMusic(musicPath: Path) {
     musicPath.createDirectories()
 
     val result = musicPath.walk()
         .filter { it.isRegularFile() }
-        .map { Music(it, it.toString().replace(musicPath.toString(), "")) }
+        .map {
+            val music = Music(it, it.toString().replace(musicPath.toString(), ""), createCover(it))
+            println(music)
+            music
+        }
 
     music.clear()
     music.addAll(result)
@@ -72,18 +160,6 @@ fun deleteFile(path: Path): Boolean {
 
     return success
 }
-
-//fun command(input: Path, output: Path) = listOf(
-//    "ffmpeg",
-//    "-y",
-//    "-i", input.absolutePathString(),
-//    "-map", "0:a:0",
-//    "-ac", "1",
-//    "-f", "s8",
-//    "-c:a", "pcm_s8",
-//    "-ar", "48000",
-//    output.absolutePathString()
-//)
 
 fun command(input: Path, output: Path) = listOf(
     "ffmpeg",
@@ -166,6 +242,7 @@ fun Route.httpRoutes(musicPath: Path) {
         val stream = cache[hash]!!
         val response = mapOf(
             "hash" to hash,
+            "music" to selected,
             "chunk_size_in_bytes" to stream.chunkSizeInBytes,
             "number_of_chunks" to stream.chunks.size,
             "number_of_bytes" to stream.totalBytes,

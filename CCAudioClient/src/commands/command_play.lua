@@ -60,6 +60,8 @@ function CommandPlay.execute(arguments)
             if key == keys.q then
                 is_running = false
                 speaker.stop()
+                term.clear()
+                term.setCursorPos(1, 1)
             elseif key == keys.p or key == keys.space then
                 is_paused = not is_paused
                 if is_paused then
@@ -218,12 +220,37 @@ function CommandPlay.execute(arguments)
         return mapped
     end
 
+    local image = nil
+    if json.music.cover ~= nil then
+        image = paintutils.parseImage(json.music.cover)
+    end
+
     local function render()
-        local position_x, position_y = term.getCursorPos()
         local width, height = term.getSize()
 
-        term.clearLine()
-        term.setCursorPos(1, position_y)
+        term.clear()
+
+        local name = arguments.file .. ". " .. json.music.name
+        term.setCursorPos((width / 2) - (#name / 2) + 1, 2)
+        term.write(name)
+
+        if image ~= nil then
+            paintutils.drawImage(image, (width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32)
+        end
+        term.setBackgroundColor(colors.black)
+
+        term.setCursorPos(1, height - 1)
+        local volume_text = "Volume: " .. volume_in_decibels .. "db "
+        local status_text = " Status: "
+        if is_paused then
+            status_text = status_text .. "Paused"
+        else
+            status_text = status_text .. "Playing"
+        end
+
+        term.write(status_text .. string.rep(" ", width - #volume_text - #status_text) .. volume_text)
+
+        term.setCursorPos(1, height - 3)
 
         local duration_current = os.date("!%H:%M:%S", time_audio)
         local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
