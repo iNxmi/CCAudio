@@ -1,33 +1,20 @@
-local api = require("api")
+local Api = require("api")
 
-local CommandList = {}
-local CommandList_mt = { __index = CommandList }
+local CommandRefresh = {}
+local CommandRefresh_mt = { __index = CommandRefresh }
 
-function CommandList.new()
+function CommandRefresh.new()
     local self = {}
-    setmetatable(self, CommandList_mt)
+    setmetatable(self, CommandRefresh_mt)
     return self
 end
 
-function CommandList:register(parser)
-    parser:command("list", "List music.")
+function CommandRefresh:register(parser)
+    parser:command("refresh", "Refresh music list.")
 end
 
-function CommandList:execute(arguments)
-    local list = api.fetch_list(arguments.address)
-    for index, file in ipairs(list) do
-        local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
-
-        if index % 2 == 0 then
-            term.setTextColour(colors.red)
-        else
-            term.setTextColour(colors.green)
-        end
-
-        textutils.pagedPrint(message)
-
-        term.setTextColour(colors.white)
-    end
+function CommandRefresh:execute(arguments)
+    Api.refresh(arguments.address)
 end
 
-return CommandList
+return CommandRefresh

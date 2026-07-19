@@ -20,7 +20,8 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 fun Application.module() {
     val musicPath = Paths.get(environment.config.property("ccaudioserver.path").getString())
     println(musicPath.absolutePathString())
-    musicPath.createDirectories()
+
+    updateMusic(musicPath)
 
     install(CallLogging) {
         level = Level.INFO
@@ -42,12 +43,6 @@ fun Application.module() {
     }
 }
 
-data class Stream(
-    val chunkSizeInBytes: Int,
-    val chunks: List<ByteArray>,
-    val totalBytes: Int,
-)
-
 fun getKeyHash(path: Path, chunkSizeInBytes: Int): String {
     val digest = MessageDigest.getInstance("SHA-256")
 
@@ -59,6 +54,17 @@ fun getKeyHash(path: Path, chunkSizeInBytes: Int): String {
 }
 
 val cache = mutableMapOf<String, Stream>()
+val music = sortedSetOf<Music>(compareBy (String.CASE_INSENSITIVE_ORDER) { it.path.toString() })
+fun updateMusic(musicPath: Path) {
+    musicPath.createDirectories()
+
+    val result = musicPath.walk()
+        .filter { it.isRegularFile() }
+        .map { Music(it, it.toString().replace(musicPath.toString(), "")) }
+
+    music.clear()
+    music.addAll(result)
+}
 
 fun deleteFile(path: Path): Boolean {
     val success = path.deleteIfExists()
@@ -103,38 +109,34 @@ fun transcode(path: Path): List<Byte>? {
     return result
 }
 
-data class Music(
-    val path: Path,
-    val name: String
-)
-
-fun getMusic(path: Path) = path.walk()
-    .filter { it.isRegularFile() }
-    .map { Music(it, it.toString().replace(path.toString(), "")) }
-    .toList()
-    .sortedWith (compareBy (String.CASE_INSENSITIVE_ORDER) { it.path.toString() })
-
 fun Route.httpRoutes(musicPath: Path) {
-    get("/api/list") {
-        val music = getMusic(musicPath).map { it.name }
-        call.respond(music)
+    post("/api/refresh") {
+        updateMusic(musicPath)
+        call.respond(HttpStatusCode.OK)
     }
 
-    get("/api/request") {
+    get("/api/list") {
+        call.respond(music.map { it.name })
+    }
+
+    post("/api/request") {
         //TODO rename to 'index'
         val id = call.request.queryParameters["index"]?.toIntOrNull()
         if (id == null) {
             call.respond(HttpStatusCode.BadRequest)
-            return@get
+            return@post
         }
 
-        val music = getMusic(musicPath)
-        val selected = music[id]
+        val selected = music.toList().getOrNull(id)
+        if(selected == null) {
+            call.respond(HttpStatusCode.BadRequest)
+            return@post
+        }
 
         val chunkSizeInBytes = call.request.queryParameters["samples_per_chunk"]?.toIntOrNull()
         if (chunkSizeInBytes == null) {
             call.respond(HttpStatusCode.BadRequest)
-            return@get
+            return@post
         }
 
         val hash = getKeyHash(selected.path, chunkSizeInBytes)
@@ -142,7 +144,7 @@ fun Route.httpRoutes(musicPath: Path) {
             val bytes = transcode(selected.path)
             if (bytes == null) {
                 call.respond(HttpStatusCode.InternalServerError)
-                return@get
+                return@post
             }
 
             val chunks = bytes.chunked(chunkSizeInBytes).map { it.toByteArray() }

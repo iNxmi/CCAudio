@@ -11,6 +11,10 @@ local CommandPlay = require("commands/command_play")
 local command_play = CommandPlay.new()
 parser:register_command(command_play)
 
+local CommandRefresh = require("commands/command_refresh")
+local command_refresh = CommandRefresh.new()
+parser:register_command(command_refresh)
+
 local function checksum(list)
     local sum = 0
     for _, value in ipairs(list) do
@@ -27,6 +31,8 @@ local function get_command()
         return command_list
     elseif arguments.play then
         return command_play
+    elseif arguments.refresh then
+        return command_refresh
     end
 end
 

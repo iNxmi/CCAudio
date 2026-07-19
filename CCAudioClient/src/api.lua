@@ -49,7 +49,7 @@ local function fetch(address, endpoint, parameters, method)
 end
 
 function Api.refresh(address)
-    return fetch(address, "/refresh")
+    return fetch (address, "/refresh", {}, "POST")
 end
 
 function Api.get_list(address)
@@ -62,7 +62,7 @@ function Api.get_request(address, index, samples_per_chunk)
         samples_per_chunk = samples_per_chunk
     }
 
-    return fetch(address, "/request", parameters)
+    return fetch(address, "/request", parameters, "POST")
 end
 
 function Api.get_chunk(address, hash, index)
