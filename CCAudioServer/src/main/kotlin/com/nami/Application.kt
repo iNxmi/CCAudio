@@ -122,7 +122,7 @@ fun Route.httpRoutes(musicPath: Path) {
 
     get("/api/request") {
         //TODO rename to 'index'
-        val id = call.request.queryParameters["file"]?.toIntOrNull()
+        val id = call.request.queryParameters["index"]?.toIntOrNull()
         if (id == null) {
             call.respond(HttpStatusCode.BadRequest)
             return@get
@@ -131,7 +131,7 @@ fun Route.httpRoutes(musicPath: Path) {
         val music = getMusic(musicPath)
         val selected = music[id]
 
-        val chunkSizeInBytes = call.request.queryParameters["chunkSizeInBytes"]?.toIntOrNull()
+        val chunkSizeInBytes = call.request.queryParameters["samples_per_chunk"]?.toIntOrNull()
         if (chunkSizeInBytes == null) {
             call.respond(HttpStatusCode.BadRequest)
             return@get
@@ -162,14 +162,14 @@ fun Route.httpRoutes(musicPath: Path) {
         call.respond(response)
     }
 
-    get("/api/stream") {
+    get("/api/chunk") {
         val hash = call.request.queryParameters["hash"]
         if (hash == null) {
             call.respond(HttpStatusCode.BadRequest)
             return@get
         }
 
-        val chunkIndex = call.request.queryParameters["chunk"]?.toIntOrNull()
+        val chunkIndex = call.request.queryParameters["index"]?.toIntOrNull()
         if (chunkIndex == null) {
             call.respond(HttpStatusCode.BadRequest)
             return@get

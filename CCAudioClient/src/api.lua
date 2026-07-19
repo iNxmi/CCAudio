@@ -58,20 +58,20 @@ end
 
 function Api.get_request(address, index, samples_per_chunk)
     local parameters = {
-        file = index,
-        chunkSizeInBytes = samples_per_chunk
+        index = index,
+        samples_per_chunk = samples_per_chunk
     }
 
     return fetch(address, "/request", parameters)
 end
 
-function Api.get_stream(address, hash, index)
+function Api.get_chunk(address, hash, index)
     local parameters = {
         hash = hash,
-        chunk = index
+        index = index
     }
 
-    return fetch(address, "/stream", parameters)
+    return fetch(address, "/chunk", parameters)
 end
 
 return Api

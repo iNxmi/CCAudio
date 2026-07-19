@@ -105,7 +105,7 @@ function CommandPlay:execute(arguments)
         local chunk_to_fetch = table.remove(fetch_queue)
 
         if chunks[chunk_to_fetch] == nil then
-            local chunk = Api.get_stream(arguments.address, json.hash, chunk_to_fetch - 1)
+            local chunk = Api.get_chunk(arguments.address, json.hash, chunk_to_fetch - 1)
 
             if not chunk then
                 print("[ERROR] requested chunk not available")
@@ -123,7 +123,7 @@ function CommandPlay:execute(arguments)
                 goto continue2
             end
 
-            local chunk = Api.get_stream(arguments.address, json.hash, i - 1)
+            local chunk = Api.get_chunk(arguments.address, json.hash, i - 1)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
@@ -142,7 +142,7 @@ function CommandPlay:execute(arguments)
                 goto continue1
             end
 
-            local chunk = Api.get_stream(arguments.address, json.hash, i - 1)
+            local chunk = Api.get_chunk(arguments.address, json.hash, i - 1)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
