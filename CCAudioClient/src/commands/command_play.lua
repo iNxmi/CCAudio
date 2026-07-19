@@ -200,7 +200,26 @@ function CommandPlay:execute(arguments)
             end
         end
 
-        return result
+
+        local function map(array, func)
+            local res = {}
+            for i, value in ipairs(array) do
+                res[i] = func(value)
+            end
+            return res
+        end
+
+        local mapped = map(result, function(sample)
+
+            local function clip(value, min, max)
+                return math.max(math.min(max, value),min)
+            end
+
+            return clip(sample * (math.pow(10, volume_in_decibels / 20)), -128, 127)
+        end)
+
+
+        return mapped
     end
 
     local function render()
@@ -246,37 +265,13 @@ function CommandPlay:execute(arguments)
         local index_samples_start = index_samples_last + 1
         local index_samples_end = math.min(index_samples_start + CONSTANTS.SPEAKER_BUFFER_SIZE - 1, json.number_of_samples)
 
-        local function map(array, func)
-            local result = {}
-            for i, value in ipairs(array) do
-                result[i] = func(value)
-            end
-            return result
-        end
-
         local buffer = get_samples(index_samples_start, index_samples_end)
         if #buffer <= 0 then
             is_running = false
             return
         end
 
-        local mapped = map(buffer, function(sample)
-
-            local function clip(value, min, max)
-                return math.max(math.min(max, value),min)
-            end
-
-            local normalized = clip(sample, -127, 127) / 127
-            local amplified = normalized * (math.pow(10, volume_in_decibels / 20))
-            local soft_clipped = math.tanh(amplified)
-            local denormalized = soft_clipped * 127
-            local dithered = denormalized + (math.random() - 0.5) + (math.random() - 0.5) + 0.5
-            local rounded = math.floor(dithered)
-            local hard_clipped = clip(rounded, -127, 127)
-            return hard_clipped
-        end)
-
-        local success = speaker.playAudio(mapped)
+        local success = speaker.playAudio(buffer)
         if not success then
             return
         end

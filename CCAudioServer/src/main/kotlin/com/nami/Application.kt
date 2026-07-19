@@ -19,8 +19,6 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
 fun Application.module() {
     val musicPath = Paths.get(environment.config.property("ccaudioserver.path").getString())
-    println(musicPath.absolutePathString())
-
     updateMusic(musicPath)
 
     install(CallLogging) {
@@ -75,15 +73,28 @@ fun deleteFile(path: Path): Boolean {
     return success
 }
 
+//fun command(input: Path, output: Path) = listOf(
+//    "ffmpeg",
+//    "-y",
+//    "-i", input.absolutePathString(),
+//    "-map", "0:a:0",
+//    "-ac", "1",
+//    "-f", "s8",
+//    "-c:a", "pcm_s8",
+//    "-ar", "48000",
+//    output.absolutePathString()
+//)
+
 fun command(input: Path, output: Path) = listOf(
     "ffmpeg",
     "-y",
     "-i", input.absolutePathString(),
     "-map", "0:a:0",
     "-ac", "1",
-    "-f", "s8",
     "-c:a", "pcm_s8",
     "-ar", "48000",
+    "-af", "aresample=resampler=soxr:dither_method=triangular_hp",
+    "-f", "s8",
     output.absolutePathString()
 )
 
