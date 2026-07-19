@@ -1,19 +1,15 @@
 local Api = require("api")
 
 local CommandRefresh = {}
-local CommandRefresh_mt = { __index = CommandRefresh }
 
-function CommandRefresh.new()
-    local self = {}
-    setmetatable(self, CommandRefresh_mt)
-    return self
+CommandRefresh.NAME = "refresh"
+
+function CommandRefresh.register(parser)
+    local command = parser:command(CommandRefresh.NAME, "Refresh music list.")
+    return command
 end
 
-function CommandRefresh:register(parser)
-    parser:command("refresh", "Refresh music list.")
-end
-
-function CommandRefresh:execute(arguments)
+function CommandRefresh.execute(arguments)
     Api.refresh(arguments.address)
 end
 

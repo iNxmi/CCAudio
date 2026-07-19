@@ -2,12 +2,14 @@ local argparse = require("libraries/argparse__0_7_2")
 
 local Parser = {}
 
-local parser_mt = {
+local Parser_mt = {
     __index = Parser
 }
 
+local commands = {}
+
 function Parser.new()
-    local self = setmetatable({}, parser_mt)
+    local self = setmetatable({}, Parser_mt)
     self.parser = argparse("script", "Example Description.")
 
     self.parser:flag("-d --debug", "print debug information")
@@ -28,11 +30,21 @@ function Parser:help(...)
 end
 
 function Parser:parse(raw_arguments)
-    return self.parser:parse(raw_arguments)
+    local arguments = self.parser:parse(raw_arguments)
+
+    local command = nil
+    for name, cmd in pairs(commands) do
+        if arguments[name] == true then
+            command = cmd
+        end
+    end
+
+    return arguments, command
 end
 
 function Parser:register_command(command)
-    command:register(self.parser)
+    commands[command.NAME] = command
+    command.register(self.parser)
 end
 
 return Parser

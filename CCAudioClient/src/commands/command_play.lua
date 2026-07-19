@@ -1,26 +1,21 @@
 local Api = require("api")
-local constants = require("constants")
 
 local CommandPlay = {}
-local CommandPlay_mt = { __index = CommandPlay }
 
-function CommandPlay.new()
-    local self = {}
-    setmetatable(self, CommandPlay_mt)
-    return self
-end
+CommandPlay.NAME = "play"
 
-function CommandPlay:register(parser)
-    local command = parser:command("play", "Play music.")
+function CommandPlay.register(parser)
+    local command = parser:command(CommandPlay.NAME, "Play music.")
     command:argument("file", "File to play.")
     command:option("-c --chunk_size", "Chunk size (in bytes)", 128 * 1024)
+    return command
 end
 
-function CommandPlay:execute(arguments)
+local function seconds()
+    return os.epoch("utc") / 1000
+end
 
-    local function seconds()
-        return os.epoch("utc") / 1000
-    end
+function CommandPlay.execute(arguments)
 
     local speaker = peripheral.find("speaker")
     if not speaker then

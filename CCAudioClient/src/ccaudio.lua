@@ -3,17 +3,15 @@ _G.CONSTANTS = require("constants")
 local Parser = require("parser")
 local parser = Parser.new()
 
-local CommandList = require("commands/command_list")
-local command_list = CommandList.new()
-parser:register_command(command_list)
+local commands = {
+    require("commands/command_list"),
+    require("commands/command_refresh"),
+    require("commands/command_play")
+}
 
-local CommandPlay = require("commands/command_play")
-local command_play = CommandPlay.new()
-parser:register_command(command_play)
-
-local CommandRefresh = require("commands/command_refresh")
-local command_refresh = CommandRefresh.new()
-parser:register_command(command_refresh)
+for _, command in ipairs(commands) do
+    parser:register_command(command)
+end
 
 local function checksum(list)
     local sum = 0
@@ -24,17 +22,7 @@ local function checksum(list)
 end
 
 local raw_arguments = { ... }
-local arguments = parser:parse(raw_arguments)
-
-local function get_command()
-    if arguments.list then
-        return command_list
-    elseif arguments.play then
-        return command_play
-    elseif arguments.refresh then
-        return command_refresh
-    end
-end
+local arguments, command = parser:parse(raw_arguments)
 
 local function execute()
     if arguments.version then
@@ -46,8 +34,7 @@ local function execute()
         print(textutils.serialize(arguments))
     end
 
-    local command = get_command()
-    return command:execute(arguments)
+    return command.execute(arguments)
 end
 
 local result = execute()

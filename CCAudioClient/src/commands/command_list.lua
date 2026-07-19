@@ -1,19 +1,15 @@
 local Api = require("api")
 
 local CommandList = {}
-local CommandList_mt = { __index = CommandList }
 
-function CommandList.new()
-    local self = {}
-    setmetatable(self, CommandList_mt)
-    return self
+CommandList.NAME = "list"
+
+function CommandList.register(parser)
+    local command = parser:command(CommandList.NAME, "List music.")
+    return command
 end
 
-function CommandList:register(parser)
-    parser:command("list", "List music.")
-end
-
-function CommandList:execute(arguments)
+function CommandList.execute(arguments)
     local list = Api.get_list(arguments.address)
     if list == nil then
         return
