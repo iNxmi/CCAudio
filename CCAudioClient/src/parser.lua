@@ -13,8 +13,7 @@ function Parser.new()
     self.parser:flag("-d --debug", "print debug information")
     self.parser:flag("-v --version", "print version")
 
-    self.parser:option("-a --address", "set server address", "127.0.0.1")
-    self.parser:option("-p --port", "set server port", "8080")
+    self.parser:option("-a --address", "set server address (ip:port)", "127.0.0.1:8080")
 
     return self
 end
@@ -28,12 +27,12 @@ function Parser:help(...)
     error(help, 0)
 end
 
-function Parser:register_command(command)
-    command:register(self.parser)
-end
-
 function Parser:parse(raw_arguments)
     return self.parser:parse(raw_arguments)
+end
+
+function Parser:register_command(command)
+    command:register(self.parser)
 end
 
 return Parser

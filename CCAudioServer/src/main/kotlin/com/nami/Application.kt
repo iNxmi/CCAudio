@@ -115,12 +115,12 @@ fun getMusic(path: Path) = path.walk()
     .sortedWith (compareBy (String.CASE_INSENSITIVE_ORDER) { it.path.toString() })
 
 fun Route.httpRoutes(musicPath: Path) {
-    get("/list") {
+    get("/api/list") {
         val music = getMusic(musicPath).map { it.name }
         call.respond(music)
     }
 
-    get("/request") {
+    get("/api/request") {
         //TODO rename to 'index'
         val id = call.request.queryParameters["file"]?.toIntOrNull()
         if (id == null) {
@@ -162,7 +162,7 @@ fun Route.httpRoutes(musicPath: Path) {
         call.respond(response)
     }
 
-    get("/stream") {
+    get("/api/stream") {
         val hash = call.request.queryParameters["hash"]
         if (hash == null) {
             call.respond(HttpStatusCode.BadRequest)

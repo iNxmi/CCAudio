@@ -1,4 +1,4 @@
-local api = require("api")
+local Api = require("api")
 
 local CommandList = {}
 local CommandList_mt = { __index = CommandList }
@@ -14,16 +14,19 @@ function CommandList:register(parser)
 end
 
 function CommandList:execute(arguments)
-    local list = api.fetch_list("http://"..arguments.address .. ":" .. arguments.port)
-    for index, file in ipairs(list) do
-        local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
+    local list = Api.get_list(arguments.address)
+    if list == nil then
+        return
+    end
 
+    for index, file in ipairs(list) do
         if index % 2 == 0 then
             term.setTextColour(colors.red)
         else
             term.setTextColour(colors.green)
         end
 
+        local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
         textutils.pagedPrint(message)
 
         term.setTextColour(colors.white)

@@ -1,4 +1,4 @@
-local api = require("api")
+local Api = require("api")
 local constants = require("constants")
 
 local CommandPlay = {}
@@ -28,7 +28,10 @@ function CommandPlay:execute(arguments)
         return
     end
 
-    local json = api.fetch_request("http://" .. arguments.address .. ":" .. arguments.port, arguments.file, arguments.chunk_size)
+    local json = Api.get_request(arguments.address, arguments.file, arguments.chunk_size)
+    if json == nil then
+        return
+    end
 
     local is_running = true
     local is_paused = false
@@ -102,7 +105,7 @@ function CommandPlay:execute(arguments)
         local chunk_to_fetch = table.remove(fetch_queue)
 
         if chunks[chunk_to_fetch] == nil then
-            local chunk = api.fetch_stream("http://" .. arguments.address .. ":" .. arguments.port, json.hash, chunk_to_fetch - 1)
+            local chunk = Api.get_stream(arguments.address, json.hash, chunk_to_fetch - 1)
 
             if not chunk then
                 print("[ERROR] requested chunk not available")
@@ -120,7 +123,7 @@ function CommandPlay:execute(arguments)
                 goto continue2
             end
 
-            local chunk = api.fetch_stream("http://" .. arguments.address .. ":" .. arguments.port, json.hash, i - 1)
+            local chunk = Api.get_stream(arguments.address, json.hash, i - 1)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
@@ -139,7 +142,7 @@ function CommandPlay:execute(arguments)
                 goto continue1
             end
 
-            local chunk = api.fetch_stream("http://" .. arguments.address .. ":" .. arguments.port, json.hash, i - 1)
+            local chunk = Api.get_stream(arguments.address, json.hash, i - 1)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else

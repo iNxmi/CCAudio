@@ -22,9 +22,6 @@ end
 local raw_arguments = { ... }
 local arguments = parser:parse(raw_arguments)
 
-local address = string.format("%s:%d", arguments.address, arguments.port)
-local http_url_default = string.format("http://%s", address)
-
 local function get_command()
     if arguments.list then
         return command_list
