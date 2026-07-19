@@ -42,6 +42,7 @@ function CommandPlay:execute(arguments)
     local time_audio = 0
 
     local volume_in_decibels = 0
+    local speed_in_samples_per_seconds = CONSTANTS.SPEAKER_SAMPLES_PER_SECOND
 
     local index_samples_last = 0
 
@@ -72,11 +73,11 @@ function CommandPlay:execute(arguments)
                     should_update = true
                 end
             elseif key == keys.right then
-                time_audio = math.min(math.max(time_audio + CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
+                time_audio = math.min(math.max(time_audio + CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
                 speaker.stop()
                 should_update = true
             elseif key == keys.left then
-                time_audio = math.min(math.max(time_audio - CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
+                time_audio = math.min(math.max(time_audio - CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
                 speaker.stop()
                 should_update = true
             elseif key == keys.up then
@@ -210,12 +211,12 @@ function CommandPlay:execute(arguments)
         end
 
         local mapped = map(result, function(sample)
-
             local function clip(value, min, max)
                 return math.max(math.min(max, value),min)
             end
 
-            return clip(sample * (math.pow(10, volume_in_decibels / 20)), -128, 127)
+            local multiplier = math.pow(10, volume_in_decibels / 20)
+            return clip(sample * multiplier, -128, 127)
         end)
 
 
@@ -230,9 +231,9 @@ function CommandPlay:execute(arguments)
         term.setCursorPos(1, position_y)
 
         local duration_current = os.date("!%H:%M:%S", time_audio)
-        local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
+        local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
 
-        local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SAMPLES_PER_SECOND)
+        local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
         local progress_length = width - #duration_current - #duration_total - 6
 
         local progress_current_string = string.rep("=", math.ceil(progress_length * progress_percentage))
@@ -259,7 +260,7 @@ function CommandPlay:execute(arguments)
         --end
 
         if should_update then
-            index_samples_last = time_audio * CONSTANTS.SAMPLES_PER_SECOND
+            index_samples_last = time_audio * CONSTANTS.SPEAKER_SAMPLES_PER_SECOND
         end
 
         local index_samples_start = index_samples_last + 1
