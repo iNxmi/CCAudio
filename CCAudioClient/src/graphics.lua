@@ -109,6 +109,10 @@ function graphics.draw_text(x, y, text, text_color, background_color, target)
     target.write(text)
 end
 
+function graphics.draw_text_centered(x, y, text, text_color, background_color, target)
+    graphics.draw_text(x - (#text / 2) + 1, y, text, text_color, background_color, target)
+end
+
 function graphics.draw_sprite(x_pos, y_pos, data, target)
     target = target or canvas or term.current()
     x_pos = math.max(x_pos, 0)

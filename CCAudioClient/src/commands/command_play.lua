@@ -253,44 +253,47 @@ function CommandPlay.execute(arguments)
         monitor = term.current()
     end
 
-    local function render()
-        local width, height = term.getSize()
+    local function render_thread()
+        while is_running do
+            local width, height = gfx.get_dimensions()
+            gfx.clear(colors.black)
 
-        gfx.clear(colors.black)
+            if image ~= nil then
+                gfx.draw_sprite((width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32, image)
+            end
 
-        local name = arguments.file .. ". " .. json.music.name
-        gfx.draw_text((width / 2) - (#name / 2) + 1, 2, name, colors.white, colors.black)
+            local name = arguments.file .. ". " .. json.music.name
+            gfx.draw_text_centered((width / 2), 2, name)
 
-        if image ~= nil then
-            gfx.draw_sprite((width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32, image, term.native())
+            local volume_text = "Volume: " .. volume_in_decibels .. "db "
+            local status_text = " Status: "
+            if is_paused then
+                status_text = status_text .. "Paused"
+            else
+                status_text = status_text .. "Playing"
+            end
+            local finished_string = status_text .. string.rep(" ", width - #volume_text - #status_text) .. volume_text
+
+            gfx.draw_text(1, height - 1, finished_string)
+
+            local duration_current = os.date("!%H:%M:%S", time_audio)
+            local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+
+            local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+            local progress_length = width - #duration_current - #duration_total - 6
+
+            local progress_current_string = string.rep("=", math.ceil(progress_length * progress_percentage))
+            if #progress_current_string >= 1 then
+                progress_current_string = string.sub(progress_current_string, 1, #progress_current_string - 1) .. ">"
+            end
+            local progress_pending_string = string.rep("-", math.floor(progress_length * (1 - progress_percentage)))
+            local progress_string = progress_current_string .. progress_pending_string
+
+            local result = string.format(" %s |%s| %s ", duration_current, progress_string, duration_total)
+            gfx.draw_text(1, height - 3, result)
+
+            sleep(0.05)
         end
-
-        local volume_text = "Volume: " .. volume_in_decibels .. "db "
-        local status_text = " Status: "
-        if is_paused then
-            status_text = status_text .. "Paused"
-        else
-            status_text = status_text .. "Playing"
-        end
-        local finished_string = status_text .. string.rep(" ", width - #volume_text - #status_text) .. volume_text
-
-        gfx.draw_text(1, height - 1, finished_string, colors.white, colors.black)
-
-        local duration_current = os.date("!%H:%M:%S", time_audio)
-        local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
-
-        local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
-        local progress_length = width - #duration_current - #duration_total - 6
-
-        local progress_current_string = string.rep("=", math.ceil(progress_length * progress_percentage))
-        if #progress_current_string >= 1 then
-            progress_current_string = string.sub(progress_current_string, 1, #progress_current_string - 1) .. ">"
-        end
-        local progress_pending_string = string.rep("-", math.floor(progress_length * (1 - progress_percentage)))
-        local progress_string = progress_current_string .. progress_pending_string
-
-        local result = string.format(" %s |%s| %s ", duration_current, progress_string, duration_total)
-        gfx.draw_text(1, height - 3, result)
     end
 
     local function audio()
@@ -339,12 +342,11 @@ function CommandPlay.execute(arguments)
             time_last = time_current
 
             audio()
-            render()
             sleep(0.05)
         end
     end
 
-    parallel.waitForAny(thread_audio, thread_fetch_chunks, input)
+    parallel.waitForAny(thread_audio, thread_fetch_chunks, input, render_thread)
 end
 
 return CommandPlay
