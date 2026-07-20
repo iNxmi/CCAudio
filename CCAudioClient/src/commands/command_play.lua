@@ -1,4 +1,5 @@
 local Api = require("api")
+local gfx = require("graphics")
 
 local CommandPlay = {}
 
@@ -11,8 +12,32 @@ function CommandPlay.register(parser)
     return command
 end
 
+
 local function seconds()
     return os.epoch("utc") / 1000
+end
+
+local function benchmark(func, ...)
+    local start_time = os.epoch("utc")
+    local ret = table.pack(func(...))
+    local end_time = os.epoch("utc") - start_time
+    term.setTextColor(colors.red)
+    print(end_time .. "ms")
+    term.setTextColor(colors.white)
+    return table.unpack(ret, 1 ,ret.n)
+end
+
+local function benchmark_target(func, target, ...)
+    target = target or term.current()
+    local start_time = os.epoch("utc")
+    local ret = table.pack(func(...))
+    local end_time = os.epoch("utc") - start_time
+    local old_target = term.redirect(target)
+    term.setTextColor(colors.red)
+    print(end_time .. "ms")
+    term.setTextColor(colors.white)
+    term.redirect(old_target)
+    return table.unpack(ret, 1 ,ret.n)
 end
 
 function CommandPlay.execute(arguments)
@@ -24,9 +49,7 @@ function CommandPlay.execute(arguments)
     end
 
     local json = Api.get_request(arguments.address, arguments.file, arguments.chunk_size)
-    if json == nil then
-        return
-    end
+    if json == nil then return end
 
     local is_running = true
     local is_paused = false
@@ -37,7 +60,6 @@ function CommandPlay.execute(arguments)
     local time_audio = 0
 
     local volume_in_decibels = 0
-    local speed_in_samples_per_seconds = CONSTANTS.SPEAKER_SAMPLES_PER_SECOND
 
     local index_samples_last = 0
 
@@ -225,21 +247,24 @@ function CommandPlay.execute(arguments)
         image = paintutils.parseImage(json.music.cover)
     end
 
+    gfx.set_mode(0)
+    local monitor = peripheral.find("monitor")
+    if not monitor then
+        monitor = term.current()
+    end
+
     local function render()
         local width, height = term.getSize()
 
-        term.clear()
+        gfx.clear(colors.black)
 
         local name = arguments.file .. ". " .. json.music.name
-        term.setCursorPos((width / 2) - (#name / 2) + 1, 2)
-        term.write(name)
+        gfx.draw_text((width / 2) - (#name / 2) + 1, 2, name, colors.white, colors.black)
 
         if image ~= nil then
-            paintutils.drawImage(image, (width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32)
+            gfx.draw_sprite((width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32, image, term.native())
         end
-        term.setBackgroundColor(colors.black)
 
-        term.setCursorPos(1, height - 1)
         local volume_text = "Volume: " .. volume_in_decibels .. "db "
         local status_text = " Status: "
         if is_paused then
@@ -247,10 +272,9 @@ function CommandPlay.execute(arguments)
         else
             status_text = status_text .. "Playing"
         end
+        local finished_string = status_text .. string.rep(" ", width - #volume_text - #status_text) .. volume_text
 
-        term.write(status_text .. string.rep(" ", width - #volume_text - #status_text) .. volume_text)
-
-        term.setCursorPos(1, height - 3)
+        gfx.draw_text(1, height - 1, finished_string, colors.white, colors.black)
 
         local duration_current = os.date("!%H:%M:%S", time_audio)
         local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
@@ -266,7 +290,7 @@ function CommandPlay.execute(arguments)
         local progress_string = progress_current_string .. progress_pending_string
 
         local result = string.format(" %s |%s| %s ", duration_current, progress_string, duration_total)
-        term.write(result)
+        gfx.draw_text(1, height - 3, result)
     end
 
     local function audio()
@@ -306,6 +330,8 @@ function CommandPlay.execute(arguments)
     end
 
     local function thread_audio()
+        gfx.set_target(term.native())
+
         time_last = seconds()
         while is_running do
             local time_current = seconds()
