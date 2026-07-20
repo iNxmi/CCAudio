@@ -51,7 +51,7 @@ class MediaService(
         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
         graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        graphics.drawImage(image, 0, 0,  96,64, null)
+        graphics.drawImage(image, 0, 0,  width,height, null)
         graphics.dispose()
 
         val result = StringBuilder()
