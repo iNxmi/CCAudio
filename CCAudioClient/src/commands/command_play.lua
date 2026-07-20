@@ -21,9 +21,9 @@ local function benchmark(func, ...)
     local start_time = os.epoch("utc")
     local ret = table.pack(func(...))
     local end_time = os.epoch("utc") - start_time
-    term.setTextColor(colors.red)
-    print(end_time .. "ms")
-    term.setTextColor(colors.white)
+    gfx.set_text_color(colors.red)
+    gfx.print(end_time .. "ms")
+    gfx.set_text_color(colors.white)
     return table.unpack(ret, 1 ,ret.n)
 end
 
@@ -247,10 +247,10 @@ function CommandPlay.execute(arguments)
         image = paintutils.parseImage(json.music.cover)
     end
 
-    local monitor = peripheral.find("monitor")
-    if not monitor then
-        monitor = term.current()
-    end
+    --local monitor = peripheral.find("monitor")
+    --if not monitor then
+    --    monitor = term.current()
+    --end
 
     local function render()
         local width, height = gfx.get_dimensions()
@@ -295,7 +295,7 @@ function CommandPlay.execute(arguments)
 
     local function thread_render()
         while is_running do
-            benchmark_target(render, monitor)
+            render()
             sleep(0.05)
         end
     end
