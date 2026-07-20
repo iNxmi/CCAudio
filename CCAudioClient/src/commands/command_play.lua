@@ -66,11 +66,22 @@ function CommandPlay.execute(arguments)
 
     local chunks = {}
 
+    local monitor = peripheral.find("monitor")
+    if not monitor then
+        monitor = term.current()
+    end
+
     local function input()
         while true do
-            local event = { os.pullEvent("key") }
+            local event = { os.pullEvent() }
             local hold = event[3]
             local key = event[2]
+
+            if event[1] == "monitor_resize" or event[1] == "term_resize" then
+                gfx.clear(colors.black, monitor)
+                --gfx.draw_text(1, 1, "Resize event", colors.red, colors.white, monitor)
+                gfx.update()
+            end
 
             if event[1] ~= "key" then
                 goto continue3
@@ -83,7 +94,7 @@ function CommandPlay.execute(arguments)
             if key == keys.q then
                 is_running = false
                 speaker.stop()
-                term.clear()
+                gfx.clear(colors.black)
                 term.setCursorPos(1, 1)
             elseif key == keys.p or key == keys.space then
                 is_paused = not is_paused
@@ -254,11 +265,6 @@ function CommandPlay.execute(arguments)
         local image_string = Api.get_cover(arguments.address, media.index)
         image = paintutils.parseImage(image_string)
     end
-
-    --local monitor = peripheral.find("monitor")
-    --if not monitor then
-    --    monitor = term.current()
-    --end
 
     local function render()
         local width, height = gfx.get_dimensions()

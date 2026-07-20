@@ -30,6 +30,10 @@ function graphics.get_mode()
     return mode
 end
 
+function graphics.update()
+    framebuffer = nil
+end
+
 local function internal_create_framebuffer()
     global_target = global_target or term.current()
     local width, height = global_target.getSize()
@@ -118,13 +122,14 @@ function graphics.draw_line(start_pos, end_pos, color, width, target)
 end
 
 function graphics.draw_rectangle_fill(x, y, width, height,  color, target)
-    graphics.draw_line(x, y, color, width, target)
+    graphics.draw_line({x, y}, {x + width , y}, color, width, target)
 end
 
-function graphics.draw_rectangle_border(x, y, color, width, height, target)
+function graphics.draw_rectangle_border(pos_x, pos_y, color, width, height, target)
     target = internal_get_correct_target(target)
-    x = math.max(x, 0)
-    y = math.max(y, 0)
+    graphics.draw_line({pos_x, pos_y}, {pos_x + width, pos_y}, color, 1, target)
+    graphics.draw_line({pos_x, pos_y + height}, {pos_x + width, pos_y + height}, color, 1, target)
+    -- for y = pos_y,
 end
 
 function graphics.draw_circle_fill(x, y, width, height, color, target)
