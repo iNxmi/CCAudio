@@ -2,15 +2,15 @@ local Api = require("api")
 
 local CommandRefresh = {}
 
-CommandRefresh.NAME = "refresh"
+CommandRefresh.NAME = "reload"
 
 function CommandRefresh.register(parser)
-    local command = parser:command(CommandRefresh.NAME, "Refresh music list.")
+    local command = parser:command(CommandRefresh.NAME, "Reload music list.")
     return command
 end
 
 function CommandRefresh.execute(arguments)
-    Api.refresh(arguments.address)
+    Api.reload(arguments.address)
 end
 
 return CommandRefresh

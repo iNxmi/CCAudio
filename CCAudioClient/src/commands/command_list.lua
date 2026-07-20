@@ -15,14 +15,14 @@ function CommandList.execute(arguments)
         return
     end
 
-    for index, file in ipairs(list) do
+    for index, media in ipairs(list) do
         if index % 2 == 0 then
             term.setTextColour(colors.red)
         else
             term.setTextColour(colors.green)
         end
 
-        local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, file)
+        local message = string.format("%s%d. %s", string.rep(" ", #tostring(#list) - #tostring(index - 1)), index - 1, media.name)
         textutils.pagedPrint(message)
 
         term.setTextColour(colors.white)

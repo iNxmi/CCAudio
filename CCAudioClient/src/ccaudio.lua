@@ -5,7 +5,7 @@ local parser = Parser.new()
 
 local commands = {
     require("commands/command_list"),
-    require("commands/command_refresh"),
+    require("commands/command_reload"),
     require("commands/command_play")
 }
 
@@ -13,13 +13,6 @@ for _, command in ipairs(commands) do
     parser:register_command(command)
 end
 
-local function checksum(list)
-    local sum = 0
-    for _, value in ipairs(list) do
-        sum = sum + value
-    end
-    return sum
-end
 
 local raw_arguments = { ... }
 local arguments, command = parser:parse(raw_arguments)

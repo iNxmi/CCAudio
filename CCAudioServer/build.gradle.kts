@@ -26,6 +26,8 @@ dependencies {
 
     implementation("io.ktor:ktor-server-websockets:3.5.0")
 
+    implementation("net.jthink:jaudiotagger:3.0.1")
+
     implementation(libs.logback.classic)
 
     testImplementation(kotlin("test"))

@@ -44,34 +44,43 @@ local function fetch(address, endpoint, parameters, method)
         return nil
     end
 
-    local json_string, _ = response.readAll()
-    return textutils.unserializeJSON(json_string)
-end
-
-function Api.refresh(address)
-    return fetch (address, "/refresh", {}, "POST")
+    local response_string, _ = response.readAll()
+    return response_string
 end
 
 function Api.get_list(address)
-    return fetch(address, "/list")
+    local json_string = fetch(address, "/media")
+    return textutils.unserializeJSON(json_string)
 end
 
-function Api.get_request(address, index, samples_per_chunk)
+function Api.get_media(address, index)
+    local endpoint = string.format("/media/%d", index)
+    local json_string = fetch(address, endpoint)
+    return textutils.unserializeJSON(json_string)
+end
+
+function Api.get_chunk(address, index_media, index_chunk, samples_per_chunk)
     local parameters = {
-        index = index,
         samples_per_chunk = samples_per_chunk
     }
 
-    return fetch(address, "/request", parameters, "POST")
+    local endpoint = string.format("/media/%d/chunk/%d", index_media, index_chunk)
+    local json_string = fetch(address, endpoint, parameters)
+    return textutils.unserializeJSON(json_string)
 end
 
-function Api.get_chunk(address, hash, index)
+function Api.get_cover(address, index)
     local parameters = {
-        hash = hash,
-        index = index
+        width = 96,
+        height = 64
     }
 
-    return fetch(address, "/chunk", parameters)
+    local endpoint = string.format("/media/%d/cover", index)
+    return fetch(address, endpoint, parameters)
+end
+
+function Api.reload(address)
+    return fetch(address, "/media/reload", {}, "POST")
 end
 
 return Api

@@ -7,11 +7,10 @@ CommandPlay.NAME = "play"
 
 function CommandPlay.register(parser)
     local command = parser:command(CommandPlay.NAME, "Play music.")
-    command:argument("file", "File to play.")
+    command:argument("index", "Index to play.")
     command:option("-c --chunk_size", "Chunk size (in bytes)", 128 * 1024)
     return command
 end
-
 
 local function seconds()
     return os.epoch("utc") / 1000
@@ -48,8 +47,10 @@ function CommandPlay.execute(arguments)
         return
     end
 
-    local json = Api.get_request(arguments.address, arguments.file, arguments.chunk_size)
-    if json == nil then return end
+    local media = Api.get_media(arguments.address, arguments.index)
+    if media == nil then
+        return
+    end
 
     local is_running = true
     local is_paused = false
@@ -92,11 +93,11 @@ function CommandPlay.execute(arguments)
                     should_update = true
                 end
             elseif key == keys.right then
-                time_audio = math.min(math.max(time_audio + CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+                time_audio = math.min(math.max(time_audio + CONSTANTS.SKIP_AMOUNT, 0),  media.numberOfSamples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
                 speaker.stop()
                 should_update = true
             elseif key == keys.left then
-                time_audio = math.min(math.max(time_audio - CONSTANTS.SKIP_AMOUNT, 0),  json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+                time_audio = math.min(math.max(time_audio - CONSTANTS.SKIP_AMOUNT, 0),  media.numberOfSamples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
                 speaker.stop()
                 should_update = true
             elseif key == keys.up then
@@ -125,7 +126,7 @@ function CommandPlay.execute(arguments)
         local chunk_to_fetch = table.remove(fetch_queue)
 
         if chunks[chunk_to_fetch] == nil then
-            local chunk = Api.get_chunk(arguments.address, json.hash, chunk_to_fetch - 1)
+            local chunk = Api.get_chunk(arguments.address, media.index, chunk_to_fetch - 1, arguments.chunk_size)
 
             if not chunk then
                 print("[ERROR] requested chunk not available")
@@ -143,7 +144,7 @@ function CommandPlay.execute(arguments)
                 goto continue2
             end
 
-            local chunk = Api.get_chunk(arguments.address, json.hash, i - 1)
+            local chunk = Api.get_chunk(arguments.address, media.index, i - 1, arguments.chunk_size)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
@@ -154,7 +155,7 @@ function CommandPlay.execute(arguments)
         end
 
         for i = chunk_to_fetch + 1, num_new_chunks, 1 do
-            if i >= json.number_of_chunks then
+            if i >= math.ceil(media.numberOfSamples / arguments.chunk_size) then
                 break
             end
 
@@ -162,7 +163,7 @@ function CommandPlay.execute(arguments)
                 goto continue1
             end
 
-            local chunk = Api.get_chunk(arguments.address, json.hash, i - 1)
+            local chunk = Api.get_chunk(arguments.address, media.index, i - 1, arguments.chunk_size)
             if not chunk then
                 print("[ERROR] requested chunk not available")
             else
@@ -192,10 +193,19 @@ function CommandPlay.execute(arguments)
         return chunks[index]
     end
 
+
+    local function checksum(list)
+        local sum = 0
+        for _, value in ipairs(list) do
+            sum = sum + value
+        end
+        return sum
+    end
+
     local function get_samples(index_global_samples_start, index_global_samples_end)
         local result = {}
         local chunk_size = arguments.chunk_size
-        local number_of_chunks = json.number_of_chunks
+        local number_of_chunks = math.ceil(media.numberOfSamples / chunk_size)
 
         local first_chunk_index = math.floor(index_global_samples_start / chunk_size)
         local last_chunk_index = math.min(math.floor(index_global_samples_end / chunk_size), number_of_chunks - 1)
@@ -204,8 +214,7 @@ function CommandPlay.execute(arguments)
 
         for chunk_index = first_chunk_index, last_chunk_index do
             local chunk = get_chunk(chunk_index + 1)
-
-            if chunk and chunk.samples then
+            if chunk then
                 local chunk_start_global = chunk_index * chunk_size
 
                 local read_start = math.max(index_global_samples_start - chunk_start_global, 0) + 1
@@ -214,12 +223,11 @@ function CommandPlay.execute(arguments)
                 local number_of_samples = read_end - read_start + 1
 
                 if number_of_samples > 0 then
-                    table.move(chunk.samples, read_start, read_end, write_position, result)
+                    table.move(chunk, read_start, read_end, write_position, result)
                     write_position = write_position + number_of_samples
                 end
             end
         end
-
 
         local function map(array, func)
             local res = {}
@@ -238,13 +246,13 @@ function CommandPlay.execute(arguments)
             return clip(sample * multiplier, -128, 127)
         end)
 
-
         return mapped
     end
 
     local image = nil
-    if json.music.cover ~= nil then
-        image = paintutils.parseImage(json.music.cover)
+    if media.hasCover then
+        local image_string = Api.get_cover(arguments.address, media.index)
+        image = paintutils.parseImage(image_string)
     end
 
     --local monitor = peripheral.find("monitor")
@@ -260,7 +268,7 @@ function CommandPlay.execute(arguments)
             gfx.draw_sprite((width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32, image)
         end
 
-        local name = arguments.file .. ". " .. json.music.name
+        local name = media.index .. ". " .. media.name
         gfx.draw_text_centered((width / 2), 2, name)
 
         local volume_text = "Volume: " .. volume_in_decibels .. "db "
@@ -275,9 +283,9 @@ function CommandPlay.execute(arguments)
         gfx.draw_text(1, height - 1, finished_string)
 
         local duration_current = os.date("!%H:%M:%S", time_audio)
-        local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+        local duration_total = os.date("!%H:%M:%S", media.numberOfSamples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
 
-        local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+        local progress_percentage = time_audio / (media.numberOfSamples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
         local progress_length = width - #duration_current - #duration_total - 6
 
         local progress_current_string = string.rep("=", math.ceil(progress_length * progress_percentage))
@@ -307,17 +315,12 @@ function CommandPlay.execute(arguments)
 
         time_audio = time_audio + time_delta
 
-        --if #sampleBuffer <= 0 then
-        --    is_running = not (download_index >= json.number_of_chunks - 1)
-        --    return
-        --end
-
         if should_update then
             index_samples_last = time_audio * CONSTANTS.SPEAKER_SAMPLES_PER_SECOND
         end
 
         local index_samples_start = index_samples_last + 1
-        local index_samples_end = math.min(index_samples_start + CONSTANTS.SPEAKER_BUFFER_SIZE - 1, json.number_of_samples)
+        local index_samples_end = math.min(index_samples_start + CONSTANTS.SPEAKER_BUFFER_SIZE - 1, media.numberOfSamples)
 
         local buffer = get_samples(index_samples_start, index_samples_end)
         if #buffer <= 0 then
@@ -349,7 +352,7 @@ function CommandPlay.execute(arguments)
     end
 
     gfx.set_target(term.native())
-    gfx.set_mode(1)
+    gfx.set_mode(0)
     parallel.waitForAny(thread_audio, thread_fetch_chunks, input, thread_render)
 end
 
