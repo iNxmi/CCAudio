@@ -247,51 +247,55 @@ function CommandPlay.execute(arguments)
         image = paintutils.parseImage(json.music.cover)
     end
 
-    gfx.set_mode(0)
     local monitor = peripheral.find("monitor")
     if not monitor then
         monitor = term.current()
     end
 
-    local function render_thread()
+    local function render()
+        local width, height = gfx.get_dimensions()
+        gfx.clear(colors.black)
+
+        if image ~= nil then
+            gfx.draw_sprite((width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32, image)
+        end
+
+        local name = arguments.file .. ". " .. json.music.name
+        gfx.draw_text_centered((width / 2), 2, name)
+
+        local volume_text = "Volume: " .. volume_in_decibels .. "db "
+        local status_text = " Status: "
+        if is_paused then
+            status_text = status_text .. "Paused"
+        else
+            status_text = status_text .. "Playing"
+        end
+        local finished_string = status_text .. string.rep(" ", width - #volume_text - #status_text) .. volume_text
+
+        gfx.draw_text(1, height - 1, finished_string)
+
+        local duration_current = os.date("!%H:%M:%S", time_audio)
+        local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+
+        local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
+        local progress_length = width - #duration_current - #duration_total - 6
+
+        local progress_current_string = string.rep("=", math.ceil(progress_length * progress_percentage))
+        if #progress_current_string >= 1 then
+            progress_current_string = string.sub(progress_current_string, 1, #progress_current_string - 1) .. ">"
+        end
+        local progress_pending_string = string.rep("-", math.floor(progress_length * (1 - progress_percentage)))
+        local progress_string = progress_current_string .. progress_pending_string
+
+        local result = string.format(" %s |%s| %s ", duration_current, progress_string, duration_total)
+        gfx.draw_text(1, height - 3, result)
+
+        gfx.render()
+    end
+
+    local function thread_render()
         while is_running do
-            local width, height = gfx.get_dimensions()
-            gfx.clear(colors.black)
-
-            if image ~= nil then
-                gfx.draw_sprite((width/ 2) - 48 + 1, 4 + ((height - 4 - 4) / 2) - 32, image)
-            end
-
-            local name = arguments.file .. ". " .. json.music.name
-            gfx.draw_text_centered((width / 2), 2, name)
-
-            local volume_text = "Volume: " .. volume_in_decibels .. "db "
-            local status_text = " Status: "
-            if is_paused then
-                status_text = status_text .. "Paused"
-            else
-                status_text = status_text .. "Playing"
-            end
-            local finished_string = status_text .. string.rep(" ", width - #volume_text - #status_text) .. volume_text
-
-            gfx.draw_text(1, height - 1, finished_string)
-
-            local duration_current = os.date("!%H:%M:%S", time_audio)
-            local duration_total = os.date("!%H:%M:%S", json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
-
-            local progress_percentage = time_audio / (json.number_of_samples / CONSTANTS.SPEAKER_SAMPLES_PER_SECOND)
-            local progress_length = width - #duration_current - #duration_total - 6
-
-            local progress_current_string = string.rep("=", math.ceil(progress_length * progress_percentage))
-            if #progress_current_string >= 1 then
-                progress_current_string = string.sub(progress_current_string, 1, #progress_current_string - 1) .. ">"
-            end
-            local progress_pending_string = string.rep("-", math.floor(progress_length * (1 - progress_percentage)))
-            local progress_string = progress_current_string .. progress_pending_string
-
-            local result = string.format(" %s |%s| %s ", duration_current, progress_string, duration_total)
-            gfx.draw_text(1, height - 3, result)
-
+            benchmark_target(render, monitor)
             sleep(0.05)
         end
     end
@@ -333,8 +337,6 @@ function CommandPlay.execute(arguments)
     end
 
     local function thread_audio()
-        gfx.set_target(term.native())
-
         time_last = seconds()
         while is_running do
             local time_current = seconds()
@@ -346,7 +348,9 @@ function CommandPlay.execute(arguments)
         end
     end
 
-    parallel.waitForAny(thread_audio, thread_fetch_chunks, input, render_thread)
+    gfx.set_target(term.native())
+    gfx.set_mode(1)
+    parallel.waitForAny(thread_audio, thread_fetch_chunks, input, thread_render)
 end
 
 return CommandPlay
