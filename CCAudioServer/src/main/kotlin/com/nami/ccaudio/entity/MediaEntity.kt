@@ -17,15 +17,17 @@ data class MediaEntity(
 
     val logger: Logger = LoggerFactory.getLogger(this.javaClass) as Logger
 
-    val samples: List<Byte> by lazy {
+    val lazySamples = lazy {
         logger.info("Loading Samples: $path")
         getSamples(path)
     }
+    val samples: List<Byte> by lazySamples
 
-    val cover: BufferedImage? by lazy {
+    val lazyCover = lazy {
         logger.info("Loading Cover: $path")
         getCover(path)
     }
+    val cover: BufferedImage? by lazyCover
 
     private fun getCover(input: Path): BufferedImage? = withTemporaryFile(".png") { output ->
         val command = listOf(

@@ -10,8 +10,7 @@ data class GetMedia(
     val path: Path,
     val numberOfSamples: Int,
 
-    val hasCover: Boolean,
-    val isLoaded: Boolean,
+    val hasCover: Boolean
 ) {
 
     constructor(index: Int, entity: MediaEntity) : this(
@@ -21,8 +20,7 @@ data class GetMedia(
         path = entity.path,
         numberOfSamples = entity.samples.size,
 
-        hasCover = entity.cover != null,
-        isLoaded = true
+        hasCover = entity.cover != null
     )
 
 }

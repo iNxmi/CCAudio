@@ -87,9 +87,9 @@ function CommandPlay.execute(arguments)
                 goto continue3
             end
 
-            if hold then
-                goto continue3
-            end
+            --if hold then
+            --    goto continue3
+            --end
 
             if key == keys.q then
                 is_running = false
