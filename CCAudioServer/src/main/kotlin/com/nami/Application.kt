@@ -14,7 +14,7 @@ import org.slf4j.event.Level
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
-import kotlin.io.path.*
+import kotlin.io.path.readBytes
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
@@ -25,7 +25,7 @@ fun Application.module() {
     val mediaService = MediaService(mediaRepository, musicPath)
 
     install(CallLogging) {
-        level = Level.INFO
+        level = Level.DEBUG
 
         format { call ->
             val status = call.response.status()
