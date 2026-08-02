@@ -6,9 +6,9 @@ local mode = 1 -- 0 basic mode, 1 performance mode
 
 local framebuffer = {}
 
-local last_text_color = nil
-local last_background_color = nil
-local last_cursor_pos_x, last_cursor_pos_y = nil, nil
+local last_text_color = {}
+local last_background_color = {}
+local last_cursor_pos_x, last_cursor_pos_y = {}, {}
 
 function graphics.set_target(canvas_obj)
     global_target = canvas_obj
@@ -38,11 +38,11 @@ end
 
 local function internal_create_framebuffer(target)
     target = target or global_target or term.current()
-    local width, height = global_target.getSize()
+    local width, height = target.getSize()
     framebuffer[target] = window.create(target, 1, 1, width, height, false)
-    last_text_color = nil
-    last_background_color = nil
-    last_cursor_pos_y, last_cursor_pos_x = nil, nil
+    last_text_color[target] = nil
+    last_background_color[target] = nil
+    last_cursor_pos_y[target], last_cursor_pos_x[target] = nil, nil
 end
 
 local function internal_get_correct_target(target)
@@ -59,23 +59,23 @@ local function internal_get_correct_target(target)
 end
 
 local function internal_check_background_color(bg_color, target)
-    if last_background_color ~= bg_color then
+    if last_background_color[target] ~= bg_color then
         target.setBackgroundColor(bg_color)
-        last_background_color = bg_color
+        last_background_color[target] = bg_color
     end
 end
 
 local function internal_check_text_color(text_color, target)
-    if last_text_color ~= text_color then
+    if last_text_color[target] ~= text_color then
         target.setTextColor(text_color)
-        last_text_color = text_color
+        last_text_color[target] = text_color
     end
 end
 
 local function internal_check_cursor_pos(x, y, target)
-    if last_cursor_pos_x ~= x or last_cursor_pos_y ~= y then
+    if last_cursor_pos_x[target] ~= x or last_cursor_pos_y[target] ~= y then
         target.setCursorPos(x,y)
-        last_cursor_pos_x, last_cursor_pos_y = x, y
+        last_cursor_pos_x[target], last_cursor_pos_y[target] = x, y
     end
 end
 
@@ -106,21 +106,21 @@ function graphics.clear(color, target)
     color = color or target.getBackgroundColor()
     internal_check_background_color(color, target)
     target.clear()
-    last_cursor_pos_x = nil
-    last_cursor_pos_y = nil
+    last_cursor_pos_x[target] = nil
+    last_cursor_pos_y[target] = nil
 end
 
 function graphics.draw_pixel(x, y, color, target)
     target = internal_get_correct_target(target)
     color = color or target.getTextColor()
-    x = math.max(x, 0)
-    y = math.max(y, 0)
+    x = math.max(x, 1)
+    y = math.max(y, 1)
     internal_check_background_color(color, target)
     internal_check_cursor_pos(x, y, target)
 
     target.write(" ")
 
-    last_cursor_pos_x = x + 1
+    last_cursor_pos_x[target] = x + 1
 end
 
 function graphics.draw_line(start_pos, end_pos, color, width, target)
@@ -144,28 +144,28 @@ end
 
 function graphics.draw_circle_fill(x, y, width, height, color, target)
     target = internal_get_correct_target(target)
-    x = math.max(x, 0)
-    y = math.max(y, 0)
+    x = math.max(x, 1)
+    y = math.max(y, 1)
 end
 
 function graphics.draw_circle_border(x, y, width, height, color, target)
     target = internal_get_correct_target(target)
-    x = math.max(x, 0)
-    y = math.max(y, 0)
+    x = math.max(x, 1)
+    y = math.max(y, 1)
 end
 
 function graphics.draw_text(x, y, text, text_color, background_color, target)
     target = internal_get_correct_target(target)
     text_color = text_color or colors.white
     background_color = background_color or colors.black
-    x = math.max(x, 0)
-    y = math.max(y, 0)
+    x = math.max(x, 1)
+    y = math.max(y, 1)
     internal_check_text_color(text_color, target)
     internal_check_background_color(background_color, target)
     internal_check_cursor_pos(x, y, target)
 
     target.write(text)
-    last_cursor_pos_x = x + #text
+    last_cursor_pos_x[target] = x + #text
 end
 
 function graphics.draw_text_centered(x, y, text, text_color, background_color, target)
@@ -174,8 +174,8 @@ end
 
 function graphics.draw_sprite(x_pos, y_pos, data, target)
     target = internal_get_correct_target(target)
-    x_pos = math.max(x_pos, 0)
-    y_pos = math.max(y_pos, 0)
+    x_pos = math.max(x_pos, 1)
+    y_pos = math.max(y_pos, 1)
 
     for y = 1, #data do
         local row = data[y]
@@ -194,9 +194,9 @@ function graphics.draw_sprite(x_pos, y_pos, data, target)
 
         target.blit(text, fg_colors, bg_colors)
     end
-    last_text_color = nil
-    last_background_color = nil
-    last_cursor_pos_y, last_cursor_pos_x = nil, nil
+    last_text_color[target] = nil
+    last_background_color[target] = nil
+    last_cursor_pos_y[target], last_cursor_pos_x[target] = nil, nil
 end
 
 -- only works in basic mode
