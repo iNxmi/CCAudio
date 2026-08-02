@@ -4,7 +4,7 @@ local graphics = {}
 local global_target = nil
 local mode = 1 -- 0 basic mode, 1 performance mode
 
-local framebuffer = nil
+local framebuffer = {}
 
 local last_text_color = nil
 local last_background_color = nil
@@ -12,7 +12,7 @@ local last_cursor_pos_x, last_cursor_pos_y = nil, nil
 
 function graphics.set_target(canvas_obj)
     global_target = canvas_obj
-    framebuffer = nil
+    framebuffer[global_target] = nil
 end
 
 function graphics.get_target()
@@ -31,28 +31,30 @@ function graphics.get_mode()
 end
 
 function graphics.update()
-    framebuffer = nil
+    for key, obj in pairs(framebuffer) do
+        framebuffer[key] = nil
+    end
 end
 
-local function internal_create_framebuffer()
-    global_target = global_target or term.current()
+local function internal_create_framebuffer(target)
+    target = target or global_target or term.current()
     local width, height = global_target.getSize()
-    framebuffer = window.create(global_target, 1, 1, width, height, false)
+    framebuffer[target] = window.create(target, 1, 1, width, height, false)
     last_text_color = nil
     last_background_color = nil
     last_cursor_pos_y, last_cursor_pos_x = nil, nil
 end
 
 local function internal_get_correct_target(target)
+    target = target or global_target or term.current()
     if mode == 0 then
-        target = target or global_target or term.current()
         return target
     end
     if mode == 1 then
-        if not framebuffer then
-            internal_create_framebuffer()
+        if not framebuffer[target] then
+            internal_create_framebuffer(target)
         end
-        return framebuffer
+        return framebuffer[target]
     end
 end
 
@@ -82,13 +84,21 @@ function graphics.get_dimensions(target)
     return target.getSize()
 end
 
-function graphics.render()
+function graphics.render(target)
     if mode ~= 1 then
         return
     end
 
-    framebuffer.setVisible(true)
-    framebuffer.setVisible(false)
+    if target then
+        framebuffer[target].setVisible(true)
+        framebuffer[target].setVisible(false)
+        return
+    end
+
+    for key, value in pairs(framebuffer) do
+        framebuffer[key].setVisible(true)
+        framebuffer[key].setVisible(false)
+    end
 end
 
 function graphics.clear(color, target)

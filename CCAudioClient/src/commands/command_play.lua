@@ -73,15 +73,9 @@ function CommandPlay.execute(arguments)
 
     local function input()
         while true do
-            local event = { os.pullEvent() }
+            local event = { os.pullEvent("key") }
             local hold = event[3]
             local key = event[2]
-
-            if event[1] == "monitor_resize" or event[1] == "term_resize" then
-                gfx.clear(colors.black, monitor)
-                --gfx.draw_text(1, 1, "Resize event", colors.red, colors.white, monitor)
-                gfx.update()
-            end
 
             if event[1] ~= "key" then
                 goto continue3
@@ -309,7 +303,7 @@ function CommandPlay.execute(arguments)
 
     local function thread_render()
         while is_running do
-            render()
+            benchmark_target(render, monitor)
             sleep(0.05)
         end
     end
