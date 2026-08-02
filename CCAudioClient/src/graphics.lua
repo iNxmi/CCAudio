@@ -31,7 +31,7 @@ function graphics.get_mode()
 end
 
 function graphics.update()
-    for key, obj in pairs(framebuffer) do
+    for key, _ in pairs(framebuffer) do
         framebuffer[key] = nil
     end
 end
@@ -95,7 +95,7 @@ function graphics.render(target)
         return
     end
 
-    for key, value in pairs(framebuffer) do
+    for key, _ in pairs(framebuffer) do
         framebuffer[key].setVisible(true)
         framebuffer[key].setVisible(false)
     end
@@ -108,6 +108,23 @@ function graphics.clear(color, target)
     target.clear()
     last_cursor_pos_x[target] = nil
     last_cursor_pos_y[target] = nil
+end
+
+function graphics.clear_all(color)
+    -- for some reason doesn't clear every target...
+    color = color or colors.black
+    if global_target then
+        internal_check_background_color(color, global_target)
+        global_target.clear()
+        last_cursor_pos_x[global_target] = nil
+        last_cursor_pos_y[global_target] = nil
+    end
+    for key, _ in pairs(framebuffer) do
+        internal_check_background_color(color, key)
+        key.clear()
+        graphics.render(key)
+        framebuffer[key] = nil
+    end
 end
 
 function graphics.draw_pixel(x, y, color, target)

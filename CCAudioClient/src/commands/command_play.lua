@@ -303,7 +303,7 @@ function CommandPlay.execute(arguments)
 
     local function thread_render()
         while is_running do
-            benchmark_target(render, monitor)
+            benchmark_target(render, term.native())
             sleep(0.05)
         end
     end
@@ -351,9 +351,10 @@ function CommandPlay.execute(arguments)
         end
     end
 
-    gfx.set_target(term.native())
-    gfx.set_mode(0)
+    gfx.set_target(monitor)
+    gfx.set_mode(1)
     parallel.waitForAny(thread_audio, thread_fetch_chunks, input, thread_render)
+    gfx.clear_all()
 end
 
 return CommandPlay
